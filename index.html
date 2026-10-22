@@ -176,6 +176,27 @@ input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-rad
 .progress div{height:100%;background:var(--accent);width:0}
 video.result{width:100%;border-radius:10px;background:#000}
 
+#home{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(env(safe-area-inset-top,0px) + 28px) 16px calc(env(safe-area-inset-bottom,0px) + 32px)}
+.home-in{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+.home-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.home-head h1{margin:0;font:700 clamp(30px,5vw,46px)/1 var(--f-display);letter-spacing:-.02em;text-wrap:balance}
+.home-head .hint{margin-top:6px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:16px}
+.pcard{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}
+.pcard.cur{border-color:var(--accent)}
+.pthumb{display:block;border:0;padding:0;background:var(--cell);cursor:pointer;aspect-ratio:16/9;width:100%;max-width:100%}
+.pthumb img,.pthumb canvas{display:block;width:100%;height:100%;object-fit:cover}
+.pthumb:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.pinfo{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 14px}
+.pinfo .meta{flex:1;min-width:0}
+.pinfo .nm{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinfo .st{font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.pmenu{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 12px 14px}
+.pnew{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:180px;border:2px dashed var(--line);border-radius:14px;background:none;cursor:pointer;color:var(--accent);font-weight:700;font-size:15px}
+.pnew svg.i{width:34px;height:34px}
+.pnew:hover{border-color:var(--accent);background:var(--panel)}
+.home-foot{display:grid;gap:8px;max-width:65ch}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:22px;font-weight:600;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:1100px){
@@ -194,7 +215,8 @@ video.result{width:100%;border-radius:10px;background:#000}
 
 <div id="app" class="">
   <header id="top">
-    <button class="brand" data-a="projects" title="Projekte"><b>Trickfilm Studio</b><span id="projName"></span></button>
+    <button class="btn icon" data-a="home" data-ic="home" title="Alle Projekte" aria-label="Alle Projekte"></button>
+    <button class="brand" data-a="home" title="Alle Projekte"><b>Trickfilm Studio</b><span id="projName"></span></button>
     <select id="sceneSel" class="sel" aria-label="Szene wählen"></select>
     <button class="btn icon" data-a="undo" id="undoBtn" title="Rückgängig (2-Finger-Tipp)" aria-label="Rückgängig"></button>
     <button class="btn icon" data-a="redo" id="redoBtn" title="Wiederholen" aria-label="Wiederholen"></button>
@@ -247,6 +269,7 @@ video.result{width:100%;border-radius:10px;background:#000}
   </section>
 </div>
 
+<div id="home" hidden></div>
 <div id="brushPop" hidden></div>
 <div id="modal" hidden></div>
 <div id="toast" hidden></div>
@@ -291,6 +314,7 @@ const IC={
  onion:'<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5" stroke-dasharray="2.2 2.2"/>',
  loop:'<path d="M17 3l3 3-3 3"/><path d="M4 11V9.5A3.5 3.5 0 0 1 7.5 6H20"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H4"/>',
  film:'<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7.5 4v16M16.5 4v16M3.5 8.5h4M3.5 12h4M3.5 15.5h4M16.5 8.5h4M16.5 12h4M16.5 15.5h4"/>',
+ home:'<path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h4.5v-5.5h3V20H18V9.5"/>',
  box:'<path d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/>'
 };
 const icon=(n,cls='')=>`<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]||''}</svg>`;
@@ -485,17 +509,22 @@ function strokesCanvas(strokes,w,h){
 /* ---------- Keyframes ---------- */
 const EASE={linear:u=>u,inout:u=>u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2,in:u=>u*u*u,out:u=>1-Math.pow(1-u,3)};
 const EASE_NAMES={linear:'Gleichmäßig',inout:'Sanft an & aus',in:'Langsam starten',out:'Langsam enden'};
+const TINT0='#ff3b30';
+function lerpHex(a,b,u){const A=hexRGB(a),B=hexRGB(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*u).toString(16).padStart(2,'0')).join('');}
+function fullKey(k){return{x:k.x,y:k.y,s:k.s,r:k.r,o:k.o,tc:k.tc||TINT0,ta:k.ta||0};}
 function objState(o,ft){
-  const k=o.keys;if(!k.length)return{x:W/2,y:H/2,s:1,r:0,o:1};
-  if(ft<=k[0].f)return k[0];const l=k[k.length-1];if(ft>=l.f)return l;
+  const k=o.keys;if(!k.length)return{x:W/2,y:H/2,s:1,r:0,o:1,tc:TINT0,ta:0};
+  if(ft<=k[0].f)return fullKey(k[0]);const l=k[k.length-1];if(ft>=l.f)return fullKey(l);
   let i=0;while(i<k.length-1&&!(k[i].f<=ft&&ft<k[i+1].f))i++;
-  const a=k[i],b=k[i+1],u=(EASE[a.e]||EASE.linear)((ft-a.f)/(b.f-a.f));
-  return{x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,s:a.s+(b.s-a.s)*u,r:a.r+(b.r-a.r)*u,o:a.o+(b.o-a.o)*u};
+  const a=fullKey(k[i]),b=fullKey(k[i+1]),u=(EASE[k[i].e]||EASE.linear)((ft-k[i].f)/(k[i+1].f-k[i].f));
+  // Ist eine Seite ungetönt, bleibt die Farbe stehen und nur die Stärke ändert sich
+  const tc=a.ta<0.004?b.tc:b.ta<0.004?a.tc:lerpHex(a.tc,b.tc,u);
+  return{x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,s:a.s+(b.s-a.s)*u,r:a.r+(b.r-a.r)*u,o:a.o+(b.o-a.o)*u,tc,ta:a.ta+(b.ta-a.ta)*u};
 }
 function keyAt(o,F,create){
   let k=o.keys.find(k=>k.f===F);
   if(!k&&create){const st=objState(o,F);const pk=[...o.keys].reverse().find(k=>k.f<F);
-    k={f:F,x:st.x,y:st.y,s:st.s,r:st.r,o:st.o,e:pk?pk.e:'linear'};o.keys.push(k);o.keys.sort((a,b)=>a.f-b.f);}
+    k={f:F,x:st.x,y:st.y,s:st.s,r:st.r,o:st.o,tc:st.tc,ta:st.ta,e:pk?pk.e:'linear'};o.keys.push(k);o.keys.sort((a,b)=>a.f-b.f);}
   return k||null;
 }
 function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]||null;}
@@ -508,17 +537,28 @@ function applyVals(E,vals){
     if('y' in vals)k.y=ok.y+(vals.y-E.base.y);
     if('s' in vals)k.s=ok.s*(vals.s/(E.base.s||1));
     if('r' in vals)k.r=ok.r+(vals.r-E.base.r);
-    if('o' in vals)k.o=clamp(ok.o+(vals.o-E.base.o),0,1);});
+    if('o' in vals)k.o=clamp(ok.o+(vals.o-E.base.o),0,1);
+    if('tc' in vals)k.tc=vals.tc;
+    if('ta' in vals)k.ta=clamp((ok.ta||0)+(vals.ta-E.base.ta),0,1);});
 }
 
 /* ---------- Szene rendern ---------- */
 function drawCover(ctx,im,w,h){const iw=im.naturalWidth||im.videoWidth,ih=im.naturalHeight||im.videoHeight;const s=Math.max(w/iw,h/ih);ctx.drawImage(im,(w-iw*s)/2,(h-ih*s)/2,iw*s,ih*s);}
+let tintC=null;
 function drawObj(ctx,o,sc,ft,fi,opt){
   if(!objVisible(o,fi))return;
   const st=objState(o,ft);let src=null;
   if(o.type==='image')src=getImage(o.assetId);
   else if(o.type==='video'){const el=opt.pool.get(o.id,o.assetId,'video');if(el.readyState>=2)src=el;}
   else if(o.type==='drawing')src=strokesCanvas(o.strokes,o.w,o.h);
+  if(src&&st.ta>0.004){
+    const k=Math.min(1,1024/Math.max(o.w,o.h)),tw=Math.max(1,Math.round(o.w*k)),th=Math.max(1,Math.round(o.h*k));
+    if(!tintC)tintC=mkCanvas(tw,th);
+    if(tintC.width!==tw||tintC.height!==th){tintC.width=tw;tintC.height=th;}
+    const tx=tintC.getContext('2d');tx.globalCompositeOperation='source-over';tx.globalAlpha=1;tx.clearRect(0,0,tw,th);tx.drawImage(src,0,0,tw,th);
+    tx.globalCompositeOperation='source-atop';tx.globalAlpha=clamp(st.ta,0,1);tx.fillStyle=st.tc;tx.fillRect(0,0,tw,th);
+    tx.globalCompositeOperation='source-over';tx.globalAlpha=1;src=tintC;
+  }
   ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.r*Math.PI/180);ctx.scale(st.s*(o.flip?-1:1),st.s);ctx.globalAlpha=clamp(st.o,0,1);
   if(src)ctx.drawImage(src,-o.w/2,-o.h/2,o.w,o.h);
   else if(opt.ui){ctx.fillStyle='rgba(120,140,160,.25)';ctx.fillRect(-o.w/2,-o.h/2,o.w,o.h);}
@@ -758,7 +798,9 @@ function updateUndo(){$('#undoBtn').disabled=!undoStack.length;$('#redoBtn').dis
 /* ---------- Speichern ---------- */
 let saveT=null;
 function scheduleSave(){clearTimeout(saveT);saveT=setTimeout(saveNow,700);}
-async function saveNow(){clearTimeout(saveT);saveT=null;if(!S.project)return;S.project.updated=Date.now();try{await DB.put('projects',S.project);}catch(e){toast('Speichern fehlgeschlagen: '+(e&&e.message||e));}}
+async function saveNow(){clearTimeout(saveT);saveT=null;if(!S.project)return;S.project.updated=Date.now();
+  try{S.project.thumb=projectThumb(S.project,320,180).toDataURL('image/jpeg',0.75);}catch(e){}
+  try{await DB.put('projects',S.project);}catch(e){toast('Speichern fehlgeschlagen: '+(e&&e.message||e));}}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&saveT)saveNow();});
 window.addEventListener('pagehide',()=>{if(saveT)saveNow();});
 function afterEdit(){scheduleSave();requestRender();drawTimeline();updateFrameInfo();}
@@ -1041,6 +1083,10 @@ function panelObj(){
     <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
   <div class="grp"><div class="sub">Position auf Bild ${S.frame+1}</div>
     ${slider('x','X',-600,W+600,st.x,'')}${slider('y','Y',-600,H+600,st.y,'')}${slider('s','Größe',2,400,st.s*100,'%')}${slider('r','Drehung',-360,360,st.r,'°')}${slider('o','Deckkraft',0,100,st.o*100,'%')}</div>
+  <div class="grp"><div class="sub">Farbe auf Bild ${S.frame+1}</div>
+    <div class="row"><label for="tr-tc">Tönung</label><input id="tr-tc" type="color" value="${st.tc}" data-tr="tc"><div class="chips">${['#ff3b30','#ff9500','#ffd60a','#34c759','#0a84ff','#ffffff','#000000'].map(c=>`<button class="chip" data-a="tint" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Tönung ${c}"></button>`).join('')}</div></div>
+    ${slider('ta','Stärke',0,100,st.ta*100,'%')}
+    <p class="hint">Setze auf zwei Bildern unterschiedliche Tönungen. Dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
   <div class="grp"><div class="sub">Sichtbar</div>
     <div class="row"><label for="ob-in">ab Bild</label><input id="ob-in" class="field num" type="number" min="1" max="${sc.length}" value="${(o.inF||0)+1}" data-ob="inF"><label for="ob-out" style="min-width:0">bis</label><input id="ob-out" class="field num" type="number" min="1" max="${sc.length}" placeholder="Ende" value="${o.outF==null?'':o.outF+1}" data-ob="outF"></div>
     <div class="btns"><button class="btn sm" data-a="visFrom">Ab hier</button><button class="btn sm" data-a="visTo">Bis hier</button><button class="btn sm" data-a="visAll">Immer</button></div></div>
@@ -1068,10 +1114,12 @@ function panelInv(){
 }
 PB.addEventListener('input',e=>{
   const t=e.target;
-  if(t.dataset.tr){const o=selObj();if(!o)return;const p=t.dataset.tr;let v=+t.value;
+  if(t.dataset.tr){const o=selObj();if(!o)return;const p=t.dataset.tr;
     if(!PB._edit){pushUndo();PB._edit=beginEdit(o,S.frame);}
-    const vals={};vals[p]=p==='s'?v/100:p==='o'?v/100:v;applyVals(PB._edit,vals);
-    const u={s:'%',o:'%',r:'°'}[p]||'';$('#trv-'+p).textContent=Math.round(v)+u;requestRender();drawTimeline();updateFrameInfo();}
+    const vals={};
+    if(p==='tc'){vals.tc=t.value;if(PB._edit.base.ta<0.004&&!PB._edit.tintBumped){vals.ta=0.5;PB._edit.tintBumped=true;}}
+    else{const v=+t.value;vals[p]=(p==='s'||p==='o'||p==='ta')?v/100:v;const u={s:'%',o:'%',ta:'%',r:'°'}[p]||'';$('#trv-'+p).textContent=Math.round(v)+u;}
+    applyVals(PB._edit,vals);requestRender();drawTimeline();updateFrameInfo();}
   else if(t.dataset.au==='volume'){const a=scene().audio.find(a=>a.id===t.dataset.id);if(a){a.volume=+t.value/100;scheduleSave();}}
   else if(t.dataset.sc==='bg'){scene().bg=t.value;requestRender();scheduleSave();}
 });
@@ -1101,7 +1149,7 @@ PB.addEventListener('change',e=>{
 
 /* ---------- Aktionen ---------- */
 const A={
-  projects:openProjects,undo,redo,
+  home:showHome,undo,redo,
   insImage:()=>pick('image/*',insertImageFiles,true),insVideo:()=>pick('video/*',insertVideoFile),insAudio:()=>pick('audio/*,.mp3,.m4a,.wav,.aac',insertAudioFile),
   stylus:()=>{S.stylusOnly=!S.stylusOnly;LS.set('stylusOnly',S.stylusOnly);updateModeUI();toast(S.stylusOnly?'Nur Stift: Der Stift zeichnet, der Finger verschiebt.':'Finger und Stift zeichnen beide.');},
   export:openExport,panel:()=>{const app=$('#app');if(innerWidth<=1100)app.classList.toggle('showpanel');else app.classList.toggle('nopanel');setTimeout(()=>{resizeStage();resizeTl();},30);},
@@ -1131,6 +1179,7 @@ const A={
   visTo:()=>{const o=selObj();if(!o)return;pushUndo();o.outF=Math.max(S.frame,o.inF||0);afterEdit();renderPanel();},
   visAll:()=>{const o=selObj();if(!o)return;pushUndo();o.inF=0;o.outF=null;afterEdit();renderPanel();},
   objFront:()=>moveZ(1),objBack:()=>moveZ(-1),
+  tint:el=>{const o=selObj();if(!o)return;pushUndo();const E=beginEdit(o,S.frame);const vals={tc:el.dataset.v};if(E.base.ta<0.004)vals.ta=0.5;applyVals(E,vals);afterEdit();renderPanel();},
   objFlip:()=>{const o=selObj();if(!o)return;pushUndo();o.flip=!o.flip;afterEdit();renderPanel();},
   objToInv:invFromObject,
   objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});addObject(c);},
@@ -1191,31 +1240,80 @@ function confirmDlg(msg,ok){return new Promise(res=>{const d=openModal(`<h2>${es
   d.querySelector('#cf-no').onclick=()=>{closeModal();res(false);};d.querySelector('#cf-ok').onclick=()=>{closeModal();res(true);};});}
 let toastT=null;function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2600);}
 
-/* Projekte */
-async function openProjects(){
-  if(S.playing)stopPlayback();await saveNow();
-  const list=(await DB.all('projects')).sort((a,b)=>(b.updated||0)-(a.updated||0));
-  const d=openModal(`<h2>Projekte</h2>
-    <div class="row"><input id="np-name" class="field" placeholder="Name für ein neues Projekt"><button class="btn primary" id="np-go">${icon('plus')}Neu</button></div>
-    <div class="proj-list">${list.map(p=>`<div class="proj ${p.id===S.project.id?'on':''}"><div class="meta"><div class="nm">${esc(p.name)}</div><div class="st">${p.scenes.length} Szene${p.scenes.length===1?'':'n'} · ${new Date(p.updated||p.created).toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short'})}</div></div>
-      <button class="btn sm" data-p="open" data-id="${p.id}">Öffnen</button><button class="btn sm" data-p="ren" data-id="${p.id}">Umbenennen</button><button class="btn sm" data-p="dup" data-id="${p.id}">Kopieren</button><button class="btn sm danger" data-p="del" data-id="${p.id}" ${list.length<2?'disabled':''}>${icon('trash')}</button></div>`).join('')}</div>
-    <div class="grp"><div class="sub">Sicherung</div><p class="hint">Projekte und Inventar liegen im Speicher dieses Browsers auf dem iPad. Sichere ab und zu alles als Datei, zum Beispiel in die Dateien-App oder iCloud.</p>
-    <div class="btns"><button class="btn sm" id="bk-all">${icon('export')}Alles sichern</button><button class="btn sm" id="bk-one">Nur dieses Projekt sichern</button><button class="btn sm" id="bk-in">Sicherung laden</button></div></div>
-    <div class="foot"><button class="btn" id="pj-close">Schließen</button></div>`,'wide');
-  d.querySelector('#pj-close').onclick=closeModal;
-  d.querySelector('#np-go').onclick=async()=>{const n=d.querySelector('#np-name').value.trim()||'Neues Projekt';const p={id:uid(),name:n,created:Date.now(),updated:Date.now(),scenes:[newScene('Szene 1')]};await DB.put('projects',p);closeModal();openProject(p);};
-  d.querySelectorAll('[data-p]').forEach(b=>b.onclick=async()=>{
-    const p=list.find(x=>x.id===b.dataset.id);const act=b.dataset.p;
-    if(act==='open'){closeModal();openProject(p.id===S.project.id?S.project:p);}
-    else if(act==='ren'){const row=b.closest('.proj');row.querySelector('.meta').innerHTML=`<input class="field" id="ren-in" value="${esc(p.name)}">`;const inp=row.querySelector('#ren-in');inp.focus();
-      const done=async()=>{const n=inp.value.trim();if(n){const tgt=p.id===S.project.id?S.project:p;tgt.name=n;await DB.put('projects',tgt);if(tgt===S.project)$('#projName').textContent=n;}openProjects();};
-      inp.addEventListener('keydown',e=>{if(e.key==='Enter')done();});inp.addEventListener('blur',done);}
-    else if(act==='dup'){const src=p.id===S.project.id?S.project:p;const c=JSON.parse(JSON.stringify(src));c.id=uid();c.name=src.name+' (Kopie)';c.created=c.updated=Date.now();await DB.put('projects',c);openProjects();}
-    else if(act==='del'){if(!await confirmDlg(`Projekt „${p.name}“ endgültig löschen?`,'Löschen')){openProjects();return;}await DB.del('projects',p.id);
-      if(p.id===S.project.id){const rest=(await DB.all('projects'));openProject(rest[0]);}gcAssets();openProjects();}
-  });
-  d.querySelector('#bk-all').onclick=()=>backup(true);d.querySelector('#bk-one').onclick=()=>backup(false);
-  d.querySelector('#bk-in').onclick=()=>pick('.json,application/json',importBackup);
+/* Startbildschirm mit Projekten */
+const home=$('#home');
+const isHome=()=>!home.hidden;
+let homeMenu=null;
+async function showHome(){
+  if(S.playing)stopPlayback();closeBrushPop();
+  if(S.project)await saveNow();
+  pool.pauseAll();home.hidden=false;homeMenu=null;await renderHome();
+}
+function projDuration(p){return p.scenes.reduce((s,c)=>s+c.length/c.fps,0);}
+async function renderHome(){
+  let list=[];try{list=await DB.all('projects');}catch(e){}
+  list.sort((a,b)=>(b.updated||0)-(a.updated||0));
+  const cards=list.map(p=>{
+    const open=homeMenu===p.id;
+    return `<article class="pcard ${S.project&&S.project.id===p.id?'cur':''}">
+      <button class="pthumb" data-h="open" data-id="${p.id}" aria-label="${esc(p.name)} öffnen">${p.thumb?`<img src="${p.thumb}" alt="">`:`<canvas width="320" height="180" data-pthumb="${p.id}"></canvas>`}</button>
+      <div class="pinfo"><div class="meta"><div class="nm" id="pn-${p.id}">${esc(p.name)}</div>
+        <div class="st">${p.scenes.length} Szene${p.scenes.length===1?'':'n'} · ${fmtS(projDuration(p))} · ${new Date(p.updated||p.created).toLocaleDateString('de-DE',{day:'numeric',month:'short'})}</div></div>
+        <button class="btn icon sm" data-h="menu" data-id="${p.id}" aria-label="Mehr zu ${esc(p.name)}" aria-expanded="${open}">•••</button></div>
+      ${open?`<div class="pmenu"><button class="btn sm" data-h="ren" data-id="${p.id}">Umbenennen</button><button class="btn sm" data-h="dup" data-id="${p.id}">${icon('copy')}Kopieren</button><button class="btn sm" data-h="bak" data-id="${p.id}">${icon('export')}Sichern</button><button class="btn sm danger" data-h="del" data-id="${p.id}">${icon('trash')}Löschen</button></div>`:''}
+    </article>`;}).join('');
+  home.innerHTML=`<div class="home-in">
+    <header class="home-head"><div><h1>Trickfilm Studio</h1><p class="hint">${list.length} Projekt${list.length===1?'':'e'} · ${inventory.length} Teile im Inventar</p></div>
+      ${S.project&&list.some(p=>p.id===S.project.id)?`<button class="btn" data-h="back">Zurück zu „${esc(S.project.name)}“</button>`:''}</header>
+    <div class="pgrid">
+      <button class="pnew" data-h="new">${icon('plus')}<span>Neues Projekt</span></button>
+      ${cards}
+    </div>
+    <section class="home-foot"><div class="sub">Sicherung</div>
+      <p class="hint">Projekte und Inventar liegen nur auf diesem Gerät. Sichere ab und zu alles als Datei, zum Beispiel in iCloud Drive.</p>
+      <div class="btns"><button class="btn sm" data-h="bakAll">${icon('export')}Alles sichern</button><button class="btn sm" data-h="imp">Sicherung laden</button></div></section>
+  </div>`;
+  home.querySelectorAll('canvas[data-pthumb]').forEach(c=>{const p=list.find(x=>x.id===c.dataset.pthumb);if(p)c.getContext('2d').drawImage(projectThumb(p,320,180),0,0);});
+  home._list=list;
+}
+const NOPOOL={get:()=>({readyState:0})};
+function projectThumb(p,w,h){
+  const c=mkCanvas(w,h),x=c.getContext('2d');const sc=p.scenes[0];if(!sc)return c;
+  x.setTransform(w/W,0,0,h/H,0,0);drawScene(x,sc,0,{pool:NOPOOL});return c;
+}
+home.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-h]');if(!b)return;
+  const act=b.dataset.h,list=home._list||[],p=list.find(x=>x.id===b.dataset.id);
+  if(act==='open'&&p){home.hidden=true;if(!S.project||S.project.id!==p.id)await openProject(p);else{resizeStage();resizeTl();requestRender();}}
+  else if(act==='back'){home.hidden=true;resizeStage();resizeTl();requestRender();}
+  else if(act==='menu'){homeMenu=homeMenu===p.id?null:p.id;renderHome();}
+  else if(act==='new')newProjectDlg();
+  else if(act==='ren'&&p){const el=home.querySelector('#pn-'+p.id);el.innerHTML=`<input class="field" id="ren-in" value="${esc(p.name)}" aria-label="Neuer Name">`;const inp=el.firstElementChild;inp.focus();inp.select();
+    let done=false;const fin=async()=>{if(done)return;done=true;const n=inp.value.trim();if(n){const tgt=S.project&&S.project.id===p.id?S.project:p;tgt.name=n;await DB.put('projects',tgt);if(tgt===S.project)$('#projName').textContent=n;}homeMenu=null;renderHome();};
+    inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')fin();});inp.addEventListener('blur',fin);}
+  else if(act==='dup'&&p){const src=S.project&&S.project.id===p.id?S.project:p;const c=JSON.parse(JSON.stringify(src));c.id=uid();c.name=src.name+' (Kopie)';c.created=c.updated=Date.now();await DB.put('projects',c);homeMenu=null;renderHome();toast('Projekt kopiert');}
+  else if(act==='bak'&&p)backup([S.project&&S.project.id===p.id?S.project:p],false);
+  else if(act==='del'&&p){if(!await confirmDlg(`Projekt „${p.name}“ endgültig löschen?`,'Löschen'))return;
+    if(S.project&&S.project.id===p.id){clearTimeout(saveT);saveT=null;pool.clear();S.project=null;}
+    await DB.del('projects',p.id);homeMenu=null;await gcAssets();renderHome();toast('Projekt gelöscht');}
+  else if(act==='bakAll')backup(null,true);
+  else if(act==='imp')pick('.json,application/json',importBackup);
+});
+function newProjectDlg(){
+  const d=openModal(`<h2>Neues Projekt</h2>
+    <div class="grp"><label class="sub" for="np-name">Name</label><input id="np-name" class="field" placeholder="z. B. Mein erster Trickfilm"></div>
+    <div class="grp"><div class="sub">Bilder pro Sekunde für die erste Szene</div><div class="chips">${[6,8,12,15,24].map(f=>`<button class="chip ${f===12?'on':''}" data-np="${f}">${f}</button>`).join('')}</div>
+    <p class="hint">12 fps ist typisch für Zeichentrick. Jede Szene kann später andere fps bekommen.</p></div>
+    <div class="foot"><button class="btn" id="np-no">Abbrechen</button><button class="btn primary" id="np-go">${icon('plus')}Erstellen</button></div>`);
+  let fps=12;
+  d.querySelectorAll('[data-np]').forEach(b=>b.onclick=()=>{fps=+b.dataset.np;d.querySelectorAll('[data-np]').forEach(x=>x.classList.toggle('on',x===b));});
+  d.querySelector('#np-no').onclick=closeModal;
+  const go=async()=>{const n=d.querySelector('#np-name').value.trim()||'Neues Projekt';
+    const p={id:uid(),name:n,created:Date.now(),updated:Date.now(),scenes:[newScene('Szene 1',fps,fps*2)]};
+    await DB.put('projects',p);closeModal();home.hidden=true;await openProject(p);};
+  d.querySelector('#np-go').onclick=go;
+  d.querySelector('#np-name').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  setTimeout(()=>d.querySelector('#np-name').focus(),50);
 }
 async function gcAssets(){try{const used=new Set();const ps=await DB.all('projects');
   const walk=p=>p.scenes.forEach(s=>{if(s.bgAsset)used.add(s.bgAsset);s.objects.forEach(o=>o.assetId&&used.add(o.assetId));s.audio.forEach(a=>used.add(a.assetId));});
@@ -1223,14 +1321,14 @@ async function gcAssets(){try{const used=new Set();const ps=await DB.all('projec
   for(const a of await DB.all('assets'))if(!used.has(a.id))await DB.del('assets',a.id);}catch(e){}}
 function blobToDataURL(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});}
 function dataURLToBlob(u){const [h,d]=u.split(',');const mime=(/data:([^;]+)/.exec(h)||[])[1]||'application/octet-stream';const bin=atob(d);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime});}
-async function backup(all){
-  await saveNow();toast('Sicherung wird erstellt …');
-  const projects=all?await DB.all('projects'):[S.project];const ids=new Set();
+async function backup(only,all){
+  if(S.project)await saveNow();toast('Sicherung wird erstellt …');
+  const projects=all?await DB.all('projects'):only;const ids=new Set();
   projects.forEach(p=>p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>o.assetId&&ids.add(o.assetId));s.audio.forEach(a=>ids.add(a.assetId));}));
   const inv=all?inventory:[];inv.forEach(i=>i.assetId&&ids.add(i.assetId));
   const assets=[];for(const id of ids){const a=await DB.get('assets',id);if(a)assets.push({id:a.id,type:a.type,name:a.name,data:await blobToDataURL(a.blob)});}
   const data=JSON.stringify({app:'trickfilm-studio',version:1,saved:new Date().toISOString(),projects,inventory:inv,assets});
-  const name=all?'Trickfilm-Sicherung-'+new Date().toISOString().slice(0,10)+'.json':(S.project.name.replace(/[^\w\-äöüÄÖÜß ]+/g,'')||'Projekt')+'.json';
+  const name=all?'Trickfilm-Sicherung-'+new Date().toISOString().slice(0,10)+'.json':(projects[0].name.replace(/[^\w\-äöüÄÖÜß ]+/g,'')||'Projekt')+'.json';
   await saveFile(name,new Blob([data],{type:'application/json'}));
 }
 async function importBackup([f]){
@@ -1238,8 +1336,9 @@ async function importBackup([f]){
     for(const a of j.assets||[])await DB.put('assets',{id:a.id,type:a.type,name:a.name,blob:dataURLToBlob(a.data)});
     for(const p of j.projects||[])await DB.put('projects',p);
     for(const i of j.inventory||[])await saveInv(i);
-    closeModal();toast(`Geladen: ${(j.projects||[]).length} Projekt(e), ${(j.inventory||[]).length} Inventar-Teile`);
-    if(j.projects&&j.projects[0])openProject(j.projects[0]);else renderPanel();
+    toast(`Geladen: ${(j.projects||[]).length} Projekt(e), ${(j.inventory||[]).length} Inventar-Teile`);
+    if(S.project&&(j.projects||[]).some(x=>x.id===S.project.id)){clearTimeout(saveT);saveT=null;pool.clear();S.project=null;}
+    if(isHome())renderHome();else showHome();
   }catch(e){toast('Sicherung konnte nicht geladen werden. '+(e.message||''));}
 }
 async function saveFile(filename,blob){
@@ -1383,7 +1482,7 @@ function sampleProject(){
   const sun=[poly(ell(150,150,90,90),'#f8c63c')];for(let k=0;k<8;k++){const a=k*Math.PI/4;sun.push(pen([r1(150+Math.cos(a)*112),r1(150+Math.sin(a)*112),1,r1(150+Math.cos(a)*140),r1(150+Math.sin(a)*140),1],'#f0a020',12));}
   s1.objects.push({id:uid(),type:'drawing',name:'Boden',w:1920,h:300,inF:0,outF:null,behind:true,flip:false,strokes:[poly(gPoly,'#7cbf5c'),pen(ground,'#4d8f3a',8)],keys:[{f:0,x:960,y:930,s:1,r:0,o:1,e:'linear'}]});
   s1.objects.push({id:uid(),type:'drawing',name:'Sonne',w:300,h:300,inF:0,outF:null,behind:true,flip:false,strokes:sun,
-    keys:[{f:0,x:260,y:300,s:.7,r:0,o:1,e:'inout'},{f:15,x:600,y:190,s:.95,r:60,o:1,e:'linear'}]});
+    keys:[{f:0,x:260,y:300,s:.7,r:0,o:1,tc:'#ff6a00',ta:0,e:'inout'},{f:15,x:600,y:190,s:.95,r:60,o:1,tc:'#ff6a00',ta:.55,e:'linear'}]});
   const s2=newScene('Nacht',12,24);s2.bg='#1b2142';
   const stars=[];for(let i=0;i<40;i++){const x=(i*397)%1880+20,y=(i*211)%640+20;stars.push(pen([x,y,1],'#fff6d0',4+(i%3)*3));}
   s2.objects.push({id:uid(),type:'drawing',name:'Sterne',w:1920,h:700,inF:0,outF:null,behind:true,flip:false,strokes:stars,keys:[{f:0,x:960,y:350,s:1,r:0,o:1,e:'linear'}]});
@@ -1405,7 +1504,7 @@ async function openProject(p){
 
 /* ---------- Tastatur ---------- */
 document.addEventListener('keydown',e=>{
-  if(e.target.closest('input,select,textarea')||!S.project)return;
+  if(e.target.closest('input,select,textarea')||!S.project||isHome()||!modal.hidden)return;
   const k=e.key.toLowerCase();
   if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
   if((e.ctrlKey||e.metaKey)&&k==='y'){e.preventDefault();redo();return;}
@@ -1436,10 +1535,8 @@ async function init(){
   let meta=null;try{meta=await DB.get('meta','seeded');}catch(e){}
   if(!meta){const seeds=seedInventory();for(const s of seeds)await saveInv(s);try{await DB.put('meta',{id:'seeded',value:true});}catch(e){}}
   let projects=[];try{projects=await DB.all('projects');}catch(e){}
-  let p=null;
-  if(!projects.length){p=sampleProject();await DB.put('projects',p);}
-  else{let last=null;try{last=await DB.get('meta','last');}catch(e){}p=projects.find(x=>last&&x.id===last.value)||projects.sort((a,b)=>(b.updated||0)-(a.updated||0))[0];}
-  await openProject(p);
+  if(!projects.length){const p=sampleProject();await DB.put('projects',p);}
+  await showHome();
   if(document.querySelector('meta[name="tfs-pwa"]')&&'serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').then(reg=>{
       reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(nw)nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller)toast('Neue Version geladen. Schließe die App und öffne sie neu.');});});
