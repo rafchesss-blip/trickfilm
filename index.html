@@ -1213,31 +1213,76 @@ function moveXform(e){
 
 /* ---------- Füllen ---------- */
 function hexRGB(h){const m=/^#?([0-9a-f]{6})$/i.exec(h);const n=m?parseInt(m[1],16):0;return[n>>16&255,n>>8&255,n&255];}
-function doFill(w){
-  const x0=Math.floor(w.x),y0=Math.floor(w.y);if(x0<0||y0<0||x0>=W||y0>=H)return;
-  const sc=scene(),fi=S.frame;
-  const c=mkCanvas(W,H),x=c.getContext('2d',{willReadFrequently:true});const fc=frameCanvas(sc,fi);if(fc)x.drawImage(fc,0,0);
-  const d=x.getImageData(0,0,W,H).data;const i0=(y0*W+x0)*4;const R=d[i0],Gc=d[i0+1],B=d[i0+2],A=d[i0+3];
+// Zusammenhängende Fläche ab (x0,y0): Maske, Rahmen und ob sie bis an den Rand läuft
+function floodRegion(d,w,h,x0,y0){
+  const i0=(y0*w+x0)*4,R=d[i0],Gc=d[i0+1],B=d[i0+2],A=d[i0+3];
   const match=A<40?(p=>d[p*4+3]<90):(p=>{const i=p*4;return Math.abs(d[i]-R)+Math.abs(d[i+1]-Gc)+Math.abs(d[i+2]-B)+Math.abs(d[i+3]-A)<110;});
-  const mask=new Uint8Array(W*H);const stack=[y0*W+x0];let count=0;
-  while(stack.length){let p=stack.pop();const y=(p/W)|0;let lx=p-y*W;
-    while(lx>0&&!mask[y*W+lx-1]&&match(y*W+lx-1))lx--;
-    let up=false,dn=false;
-    for(let xx=lx;xx<W;xx++){const q=y*W+xx;if(mask[q]||!match(q))break;mask[q]=1;count++;
-      if(y>0){const u=q-W;if(!mask[u]&&match(u)){if(!up){stack.push(u);up=true;}}else up=false;}
-      if(y<H-1){const v=q+W;if(!mask[v]&&match(v)){if(!dn){stack.push(v);dn=true;}}else dn=false;}}
+  const mask=new Uint8Array(w*h),stack=[y0*w+x0];let count=0,bx0=w,by0=h,bx1=0,by1=0;
+  while(stack.length){
+    const p=stack.pop();if(mask[p])continue;const y=(p/w)|0;let lx=p-y*w;
+    while(lx>0&&!mask[y*w+lx-1]&&match(y*w+lx-1))lx--;
+    let up=false,dn=false,xx=lx;
+    for(;xx<w;xx++){const q=y*w+xx;if(mask[q]||!match(q))break;mask[q]=1;count++;
+      if(y>0){const u=q-w;if(!mask[u]&&match(u)){if(!up){stack.push(u);up=true;}}else up=false;}
+      if(y<h-1){const v=q+w;if(!mask[v]&&match(v)){if(!dn){stack.push(v);dn=true;}}else dn=false;}}
+    if(xx>lx){if(lx<bx0)bx0=lx;if(xx-1>bx1)bx1=xx-1;if(y<by0)by0=y;if(y>by1)by1=y;}
   }
-  if(!count)return;
-  let bx0=W,by0=H,bx1=0,by1=0;
-  for(let pass=0;pass<2;pass++){const m2=mask.slice();
-    for(let y=0;y<H;y++)for(let xx=0;xx<W;xx++){const q=y*W+xx;if(m2[q])continue;
-      if((xx>0&&m2[q-1])||(xx<W-1&&m2[q+1])||(y>0&&m2[q-W])||(y<H-1&&m2[q+W]))mask[q]=1;}}
-  for(let y=0;y<H;y++)for(let xx=0;xx<W;xx++)if(mask[y*W+xx]){if(xx<bx0)bx0=xx;if(xx>bx1)bx1=xx;if(y<by0)by0=y;if(y>by1)by1=y;}
-  const bw=bx1-bx0+1,bh=by1-by0+1;const oc=mkCanvas(bw,bh),ox=oc.getContext('2d');const id=ox.createImageData(bw,bh);const [cr,cg,cb]=hexRGB(S.color);const al=Math.round(255*S.alpha);
-  for(let y=0;y<bh;y++)for(let xx=0;xx<bw;xx++)if(mask[(y+by0)*W+xx+bx0]){const i=(y*bw+xx)*4;id.data[i]=cr;id.data[i+1]=cg;id.data[i+2]=cb;id.data[i+3]=al;}
-  ox.putImageData(id,0,0);
-  const s={t:'fill',x:bx0,y:by0,w:bw,h:bh,src:oc.toDataURL('image/png')};
-  pushUndo();const arr=sc.frames[fi];let at=0;while(at<arr.length&&arr[at].t==='fill')at++;arr.splice(at,0,s);afterEdit();
+  if(!count)return null;
+  const edge=bx0===0||by0===0||bx1===w-1||by1===h-1;
+  // 2 Pixel ausweiten, damit zu den Linien keine helle Kante bleibt
+  for(let pass=0;pass<2;pass++){
+    const ex0=Math.max(0,bx0-1),ey0=Math.max(0,by0-1),ex1=Math.min(w-1,bx1+1),ey1=Math.min(h-1,by1+1),m2=mask.slice();
+    for(let y=ey0;y<=ey1;y++)for(let x=ex0;x<=ex1;x++){const q=y*w+x;if(m2[q])continue;
+      if((x>0&&m2[q-1])||(x<w-1&&m2[q+1])||(y>0&&m2[q-w])||(y<h-1&&m2[q+w]))mask[q]=1;}
+    bx0=ex0;by0=ey0;bx1=ex1;by1=ey1;
+  }
+  return{mask,count,edge,bx0,by0,bx1,by1};
+}
+function makeFill(reg,w){
+  const{mask,bx0,by0,bx1,by1}=reg,bw=bx1-bx0+1,bh=by1-by0+1,oc=mkCanvas(bw,bh),ox=oc.getContext('2d'),id=ox.createImageData(bw,bh);
+  const[cr,cg,cb]=hexRGB(S.color),al=Math.round(255*S.alpha);
+  for(let y=0;y<bh;y++)for(let x=0;x<bw;x++)if(mask[(y+by0)*w+x+bx0]){const i=(y*bw+x)*4;id.data[i]=cr;id.data[i+1]=cg;id.data[i+2]=cb;id.data[i+3]=al;}
+  ox.putImageData(id,0,0);return{t:'fill',x:bx0,y:by0,w:bw,h:bh,src:oc.toDataURL('image/png')};
+}
+// Füllungen liegen unter den Linien
+function insertFill(arr,s){const a=arr.slice();let at=0;while(at<a.length&&a[at].t==='fill')at++;a.splice(at,0,s);return a;}
+let _hc=null;
+function hitCtx(){if(!_hc)_hc=mkCanvas(2,2).getContext('2d');_hc.setTransform(1,0,0,1,0,0);return _hc;}
+// true = erledigt (gefüllt oder bewusst nicht füllbar)
+function fillObject(o,w,front){
+  const sc=scene();if(!objVisible(o,S.frame))return false;
+  const M=objMat(o,S.ft,sc),l=mapp(minv(M),w.x,w.y);
+  if(Math.abs(l.x)>o.w/2+2||Math.abs(l.y)>o.h/2+2)return false;
+  if(o.type==='shape'){
+    const pts=objState(o,S.ft).pts||o.pts,t=hitCtx();shapePath(t,pts,o.closed,o.smooth);
+    t.lineWidth=Math.max(o.strokeOn?o.sw:0,12/(worldScale()*mscale(M)));t.lineJoin='round';t.lineCap='round';
+    const onStroke=t.isPointInStroke(l.x,l.y),inside=o.closed&&t.isPointInPath(l.x,l.y);
+    if(onStroke&&(o.strokeOn||!o.closed)&&!(inside&&!o.strokeOn)){pushUndo();o.stroke=S.color;o.strokeOn=true;shapeDims(o);afterEdit();renderPanel();toast('Rand von „'+o.name+'“ umgefärbt');return true;}
+    if(inside){pushUndo();o.fill=S.color;o.fillOn=true;afterEdit();renderPanel();toast('„'+o.name+'“ gefüllt');return true;}
+    return false;
+  }
+  if(o.type==='drawing'){
+    const c=mkCanvas(o.w,o.h),x=c.getContext('2d',{willReadFrequently:true});for(const s of o.strokes)drawStroke(x,s);
+    const px=Math.floor(l.x+o.w/2),py=Math.floor(l.y+o.h/2);if(px<0||py<0||px>=c.width||py>=c.height)return false;
+    const d=x.getImageData(0,0,c.width,c.height).data,reg=floodRegion(d,c.width,c.height,px,py);if(!reg)return false;
+    // Durchsichtige Fläche, die bis an den Rand läuft, liegt außerhalb der Figur
+    if(reg.edge&&d[(py*c.width+px)*4+3]<40)return false;
+    pushUndo();o.strokes=insertFill(o.strokes,makeFill(reg,c.width));afterEdit();toast('Fläche in „'+o.name+'“ gefüllt');return true;
+  }
+  if(front){toast(o.type==='mouth'?'Münder färbst du im Inventar oder mit der Tönung im Panel.':'Fotos und Videos lassen sich nicht füllen. Nimm dafür die Tönung im Panel.');return true;}
+  return false;
+}
+function doFill(w){
+  const sc=scene(),fi=S.frame;
+  for(const o of [...sc.objects.filter(o=>!o.behind)].reverse())if(fillObject(o,w,true))return;
+  const x0=Math.floor(w.x),y0=Math.floor(w.y);let reg=null;
+  if(x0>=0&&y0>=0&&x0<W&&y0<H){const c=mkCanvas(W,H),x=c.getContext('2d',{willReadFrequently:true});const fc=frameCanvas(sc,fi);if(fc)x.drawImage(fc,0,0);
+    reg=floodRegion(x.getImageData(0,0,W,H).data,W,H,x0,y0);}
+  const applyFrame=()=>{pushUndo();sc.frames[fi]=insertFill(sc.frames[fi],makeFill(reg,W));afterEdit();};
+  // Geschlossene Fläche in der Zeichnung geht vor Objekten dahinter
+  if(reg&&!reg.edge){applyFrame();return;}
+  for(const o of [...sc.objects.filter(o=>o.behind)].reverse())if(fillObject(o,w,false))return;
+  if(reg)applyFrame();
 }
 
 /* ---------- Undo ---------- */
