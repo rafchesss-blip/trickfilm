@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="23.10.2026 16:23">
+<meta name="tfs-version" content="23.10.2026 16:31">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -395,7 +395,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 
 /* ---------- State ---------- */
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
-  stylusOnly:LS.get('stylusOnly',false),autoKey:LS.get('autoKey2',false),onion:LS.get('onion',true),loop:LS.get('loop',true),
+  stylusOnly:LS.get('stylusOnly',false),actFront:LS.get('actFront',true),autoKey:LS.get('autoKey2',false),onion:LS.get('onion',true),loop:LS.get('loop',true),
   sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
@@ -777,7 +777,9 @@ function drawScene(ctx,sc,ft,opt){
   if(!opt.noCam){const C=camMat(sc,ft);if(C!==I6)ctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}
   if(sc.bgAsset){const im=getImage(sc.bgAsset);if(im)drawCover(ctx,im,W,H);}
   for(const o of sc.objects)if(o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
-  for(const l of layersOf(sc)){
+  // Beim Zeichnen kann die markierte Ebene vorne liegen; beim Abspielen und im Video gilt die echte Reihenfolge
+  const ls=layersOf(sc),actFront=opt.active&&opt.actFront?ls.find(l=>l.id===opt.active.id):null;
+  for(const l of actFront?ls.filter(x=>x!==actFront).concat([actFront]):ls){
     if(!l.visible)continue;const isAct=opt.active&&opt.active.id===l.id;
     if(opt.onion&&isAct){
       const pc=fi>0&&frameCanvas(sc,l,fi-1,T.onionPrev);if(pc){ctx.globalAlpha=.28;ctx.drawImage(pc,0,0);}
@@ -827,7 +829,7 @@ function render(){
     if(!work)work=mkCanvas(W,H);const wx=work.getContext('2d');wx.clearRect(0,0,W,H);
     const fc=frameCanvas(sc,actLayer(sc),fi);if(fc)wx.drawImage(fc,0,0);drawStroke(wx,G.s);layer=work;
   }
-  drawScene(sctx,sc,ft,{pool,ui:true,layer,active:S.playing?null:actLayer(sc),onion:S.onion&&!S.playing,noCam:!camOn()});
+  drawScene(sctx,sc,ft,{pool,ui:true,layer,active:S.playing?null:actLayer(sc),actFront:S.actFront,onion:S.onion&&!S.playing,noCam:!camOn()});
   if(G&&(G.kind==='shape'||G.kind==='free'||G.kind==='path')){
     sctx.save();if(camOn()){const C=camMat(sc,ft);sctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}drawShapePreview(sc,fi);sctx.restore();}
   sctx.restore();
@@ -1762,6 +1764,8 @@ function panelLayers(){
     <input id="ly-name" class="field" value="${esc(act.name)}" data-ly="name" aria-label="Name der Ebene">
     <div class="row"><label for="ly-op">Deckkraft</label><input id="ly-op" type="range" min="5" max="100" value="${Math.round((act.op??1)*100)}" data-ly="op"><span class="val" id="ly-opv">${Math.round((act.op??1)*100)}%</span></div>
     <div class="btns"><button class="btn sm" data-a="layMerge" ${ai===0?'disabled':''}>Mit Ebene darunter zusammenfügen</button></div>
+    <label class="check"><input id="ly-front" type="checkbox" data-ly="front" ${S.actFront?'checked':''}>Beim Zeichnen die markierte Ebene vorne zeigen</label>
+    <p class="hint">Beim Abspielen und im Video liegt immer die obere Ebene vorne.</p>
     <p class="hint">Tipp: Zeichne Umrisse auf einer Ebene und Farbe auf einer Ebene darunter. Dann kannst du ausmalen, ohne die Linien zu treffen.</p></div>`;
 }
 function panelInv(){
@@ -1799,6 +1803,7 @@ PB.addEventListener('input',e=>{
 PB.addEventListener('change',e=>{
   const t=e.target,sc=scene();
   if(t.dataset.tr){PB._edit=null;afterEdit();if(t.type==='color'){const ta=$('#tr-ta'),st=objState(selObj()||{keys:[]},S.frame);if(ta){ta.value=Math.round(st.ta*100);$('#trv-ta').textContent=Math.round(st.ta*100)+'%';}}else renderPanel();return;}
+  if(t.dataset.ly==='front'){S.actFront=t.checked;LS.set('actFront',S.actFront);requestRender();return;}
   if(t.dataset.ly){const l=actLayer();if(t.dataset.ly==='name'){pushUndo();l.name=t.value.trim()||l.name;}PB._ly=false;afterEdit();renderPanel();updateModeUI();return;}
   if(t.dataset.cam){if(t.dataset.cam==='e'){const ks=sc.cam&&sc.cam.keys||[];const kb=[...ks].reverse().find(k=>k.f<=S.frame);if(kb){pushUndo();kb.e=t.value;}}
     PB._cam=null;afterEdit();renderPanel();return;}

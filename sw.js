@@ -1,5 +1,5 @@
 // Offline-Speicher für Trickfilm Studio
-const V = 'tfs-7c81e60b04';
+const V = 'tfs-00f7fe47fa';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
