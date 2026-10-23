@@ -1908,7 +1908,16 @@ function renderTools(){
   $('#stageWrap').classList.toggle('draw',['pen','marker','eraser','fill','shape'].includes(S.tool));
 }
 function setTool(t){S.tool=t;LS.set('tool',t);renderTools();updateModeUI();}
-function setColor(c,fromPicker){S.color=c;LS.set('color',c);S.recent=[c,...S.recent.filter(x=>x!==c)].slice(0,8);LS.set('recent',S.recent);if(S.tool==='eraser'||S.tool==='select'||S.tool==='hand')S.tool='pen';renderTools();updateModeUI();
+// Ausgewähltes Objekt bekommt die neue Farbe (nicht beim Zeichnen, damit nichts aus Versehen umgefärbt wird)
+function recolorObj(o,c){
+  if(o.type==='shape'){pushUndo();if(o.closed&&o.fillOn)o.fill=c;else{o.stroke=c;o.strokeOn=true;}shapeDims(o);}
+  else if(o.type==='drawing'||o.type==='mouth'){pushUndo();applyVals(beginEdit(o,S.frame,['tint']),{tc:c,ta:1});}
+  else return false;
+  afterEdit();renderPanel();toast('Farbe von „'+o.name+'“ geändert');return true;
+}
+function setColor(c,fromPicker){S.color=c;LS.set('color',c);S.recent=[c,...S.recent.filter(x=>x!==c)].slice(0,8);LS.set('recent',S.recent);
+  const o=S.project&&selObj(),recolored=o&&['select','shape','hand'].includes(S.tool)&&recolorObj(o,c);
+  if(!recolored&&(S.tool==='eraser'||S.tool==='select'||S.tool==='hand'))S.tool='pen';renderTools();updateModeUI();
   const bp=$('#brushPop');if(bp.hidden)return;
   // Den offenen Farbwähler nicht wegwerfen, sonst schließt ihn das iPad
   if(fromPicker){bp.querySelectorAll('.pal button').forEach(b=>b.classList.toggle('on',b.dataset.v===c));const v=$('#bp-cv');if(v)v.textContent=c;}
