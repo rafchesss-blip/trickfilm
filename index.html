@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="23.10.2026 17:11">
+<meta name="tfs-version" content="23.10.2026 17:22">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -1213,10 +1213,8 @@ function updateHoverPlus(e){
     for(const o of editableShapes()){const et=edgeTol(e,o),h=et?shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,et):null;if(h){hp={id:o.id,x:h.x,y:h.y};break;}}}
   if(JSON.stringify(hp)!==JSON.stringify(hoverPlus)){hoverPlus=hp;requestRender();}
 }
+// Formen-Werkzeug zeichnet immer eine neue Form (verschoben wird mit dem Auswahl-Werkzeug)
 function shapeToolDown(e,w){
-  const hh=hitHandle(e.clientX,e.clientY);if(hh){startXform(hh,e,w);return;}
-  if(hitShapePoint(e,w))return;
-  const sel=selObj();if(sel&&hitTest(w)===sel){startXform('move',e,w);return;}
   if(S.shapeKind==='free')G={kind:'free',id:e.pointerId,pts:[r1(w.x),r1(w.y)]};
   else G={kind:'shape',id:e.pointerId,a:w,b:w};
   requestRender();
@@ -1300,7 +1298,8 @@ stage.addEventListener('pointerdown',e=>{
     const hh=hitHandle(e.clientX,e.clientY);if(hh){startXform(hh,e,w);return;}
     if(hitShapePoint(e,w))return;
     const o=hitTest(w);if(o&&S.multi&&S.multi.includes(o.id)){startMulti(e,w);return;}
-    if(o){select(o.id);startXform('move',e,w);}else startMarquee(e);
+    if(o&&o.id===S.sel){startXform('move',e,w);return;}
+    startMarquee(e,o);
     return;
   }
   if(S.tool==='fill'){doFill(w);return;}
@@ -1382,9 +1381,9 @@ function pickColorAt(e){
   const hex='#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
   setColor(hex);toast('Farbe übernommen: '+hex);
 }
-function startMarquee(e){const r=stage.getBoundingClientRect(),a={x:e.clientX-r.left,y:e.clientY-r.top};G={kind:'marq',id:e.pointerId,a,b:a,moved:false};}
+function startMarquee(e,tapObj){const r=stage.getBoundingClientRect(),a={x:e.clientX-r.left,y:e.clientY-r.top};G={kind:'marq',id:e.pointerId,a,b:a,moved:false,tapObj};}
 function finishMarquee(g){
-  if(!g.moved){select(null);return;}
+  if(!g.moved){select(g.tapObj?g.tapObj.id:null);return;}
   const x0=Math.min(g.a.x,g.b.x),x1=Math.max(g.a.x,g.b.x),y0=Math.min(g.a.y,g.b.y),y1=Math.max(g.a.y,g.b.y),sc=scene(),Wi=minv(worldMat());
   const hit0=objectsInOrder(sc).filter(o=>{const l=objLayer(sc,o);if(o.type==='group'||!l.visible||l.locked||!objVisible(o,S.frame))return false;
     const p=handles(o).poly,bx0=Math.min(...p.map(q=>q.x)),bx1=Math.max(...p.map(q=>q.x)),by0=Math.min(...p.map(q=>q.y)),by1=Math.max(...p.map(q=>q.y));
@@ -1393,7 +1392,9 @@ function finishMarquee(g){
     const ix0=Math.max(x0,bx0),ix1=Math.min(x1,bx1),iy0=Math.max(y0,by0),iy1=Math.min(y1,by1),area=(ix1-ix0+1)*(iy1-iy0+1),step=Math.max(5,Math.sqrt(area/6000));
     for(let y=iy0;y<=iy1+0.01;y+=step)for(let x=ix0;x<=ix1+0.01;x+=step){const q=mapp(Wi,x,y);if(objHitAt(o,q,step/2+1))return true;}
     return false;});
-  const hit=[...new Set(hit0.map(o=>rootGroup(sc,o)))];
+  const inside=o=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[(x0+x1)/2,(y0+y1)/2]].every(([x,y])=>objHitAt(o,mapp(Wi,x,y),0));
+  const touched=hit0.filter(o=>!inside(o)),pick=touched.length?touched:hit0.slice(-1);
+  const hit=[...new Set(pick.map(o=>rootGroup(sc,o)))];
   if(!hit.length){select(null);toast('Im Rahmen ist kein Objekt.');return;}
   if(hit.length===1){select(hit[0].id);return;}
   S.sel=null;S.pivotEdit=false;S.multi=hit.map(o=>o.id);if(S.tab!=='inv')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();
@@ -1847,7 +1848,7 @@ function panelObj(){
     <div class="btns"><button class="btn sm primary" data-a="group">Gruppieren</button><button class="btn sm" data-a="objDup">${icon('copy')}Alle kopieren</button><button class="btn sm danger" data-a="objDel">${icon('trash')}Alle löschen</button><button class="btn sm" data-a="multiNone">Auswahl aufheben</button></div>
     <p class="hint">Zieh an einem der Objekte, um alle zusammen zu verschieben. Tippst du eine Farbe an, bekommen alle Formen und Zeichnungen die neue Farbe. Tippen auf ein einzelnes Objekt wählt nur dieses aus.</p></div>`;
   const o=selObj();
-  if(!o)return `<div class="grp"><h3>Kein Objekt ausgewählt</h3><p class="hint">Tippe mit dem Auswahl-Werkzeug auf ein Objekt. Im Modus „Nur Stift“ reicht ein Finger: Der Finger verschiebt, der Stift zeichnet.</p>
+  if(!o)return `<div class="grp"><h3>Kein Objekt ausgewählt</h3><p class="hint">Antippen wählt ein Objekt aus, danach verschiebt Ziehen es. Ziehen an einer anderen Stelle zieht einen Rahmen: Alles, was er berührt, wird ausgewählt. Im Modus „Nur Stift“ verschiebt der Finger sofort.</p>
     <div class="btns"><button class="btn sm" data-a="frameToObj">${icon('select')}Aktueller Frame → Objekt</button><button class="btn sm" data-a="insImage">${icon('image')}Foto</button><button class="btn sm" data-a="insVideo">${icon('video')}Video</button><button class="btn sm" data-a="addMouth">Mund für Lippensync</button></div></div>
     <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Frame 1 an den Startpunkt schieben. 3. In der Zeitleiste einen späteren Frame antippen, „◆ Keyframe“ tippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
   const sc=scene(),st=objState(o,S.frame),k=o.keys.find(k=>k.f===S.frame),kb=keyBefore(o,S.frame);
@@ -2026,7 +2027,7 @@ const A={
   addFrame:()=>addFrame(false),dupFrame:()=>addFrame(true),delFrame,setKey,delKey,
   onion:()=>{S.onion=!S.onion;LS.set('onion',S.onion);updateModeUI();requestRender();},
   loop:()=>{S.loop=!S.loop;LS.set('loop',S.loop);updateModeUI();},
-  tool:el=>{const v=el.dataset.v;const again=S.tool===v;setTool(v);if(v==='shape'){if(again&&!$('#brushPop').hidden)closeBrushPop();else openShapePop();}else closeBrushPop();},
+  tool:el=>{const v=el.dataset.v;const again=S.tool===v;if(v==='shape'&&!again&&(S.sel||S.multi))select(null);setTool(v);if(v==='shape'){if(again&&!$('#brushPop').hidden)closeBrushPop();else openShapePop();}else closeBrushPop();},
   brush:toggleBrushPop,
   shapeKind:el=>{S.shapeKind=el.dataset.v;LS.set('shapeKind',S.shapeKind);renderShapePop();updateModeUI();},
   spSc:el=>{const c=el.dataset.v;S.shapeStrokeColor=c;LS.set('shapeStrokeColor',c);S.shapeStroke=true;LS.set('shapeStroke',true);renderShapePop();},
