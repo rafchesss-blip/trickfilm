@@ -394,7 +394,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 
 /* ---------- State ---------- */
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
-  stylusOnly:LS.get('stylusOnly',false),autoKey:LS.get('autoKey',true),onion:LS.get('onion',true),loop:LS.get('loop',true),
+  stylusOnly:LS.get('stylusOnly',false),autoKey:LS.get('autoKey2',false),onion:LS.get('onion',true),loop:LS.get('loop',true),
   sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
@@ -608,7 +608,7 @@ function objStateNoPath(o,ft){const p=o.path;o.path=null;const st=objState(o,ft)
 function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]||null;}
 function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF);}
 // Ein Keyframe entsteht nur, wenn etwas geändert wird, das auch animiert werden soll
-function beginEdit(o,F,groups){const AF=animFlags(o);const key=S.autoKey&&(!groups||groups.some(g=>AF[g]))?keyAt(o,F,true):null;
+function beginEdit(o,F,groups){const AF=animFlags(o),anim=!groups||groups.some(g=>AF[g]);const key=anim?keyAt(o,F,S.autoKey):null;
   const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:o.keys.map(k=>({...k})),key};}
 function applyVals(E,vals){
   const AF=animFlags(E.o);
@@ -687,7 +687,7 @@ function camKeyAt(sc,F,create){
 }
 function beginCamEdit(sc,F){
   if(!sc.cam)sc.cam={keys:[]};const base=camState(sc,F);
-  if(S.autoKey||!sc.cam.keys.length)return{sc,base,key:camKeyAt(sc,F,true)};
+  if(S.autoKey||!sc.cam.keys.length||sc.cam.keys.some(k=>k.f===F))return{sc,base,key:camKeyAt(sc,F,true)};
   return{sc,base,key:null,orig:sc.cam.keys.map(k=>({...k}))};
 }
 function applyCam(E,vals){
@@ -1034,10 +1034,10 @@ function shapeEdgeAt(o,x,y,maxD){
   for(const [lx,ly,i,t] of shapeSamples(o,pts,24)){const p=mapp(M,lx,ly),d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best={x:p.x,y:p.y,lx,ly,i,t};}}
   return best;
 }
-function shapeScreenSize(o){const h=handles(o),p=h.poly;return Math.min(Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),Math.hypot(p[3].x-p[0].x,p[3].y-p[0].y));}
-// Wie nah man an Punkt bzw. Rand sein muss. Anfassen in der Fläche verschiebt immer die ganze Form.
-function ptTol(e,o){const big=shapeScreenSize(o);return big<50?0:e.pointerType==='mouse'?10:(big<110?12:16);}
-function edgeTol(e,o){const big=shapeScreenSize(o);return big<100?0:e.pointerType==='mouse'?8:12;}
+function shapeScreenSize(o,max){const h=handles(o),p=h.poly,a=Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),b=Math.hypot(p[3].x-p[0].x,p[3].y-p[0].y);return max?Math.max(a,b):Math.min(a,b);}
+// Wie nah man an Punkt bzw. Rand sein muss. Ziehen in der Fläche oder am Rand verschiebt immer die ganze Form.
+function ptTol(e,o){const big=shapeScreenSize(o,true);return big<40?0:e.pointerType==='mouse'?10:(big<110?12:16);}
+function edgeTol(e,o){const big=o.closed?shapeScreenSize(o):shapeScreenSize(o,true);return big<(o.closed?70:60)?0:e.pointerType==='mouse'?8:14;}
 function editPtsAll(o,fn){o.pts=fn(o.pts);for(const k of o.keys)if(k.pts)k.pts=fn(k.pts);}
 let lastPtTap={id:null,i:-1,t:0};
 function hitShapePoint(e,w){
@@ -1052,22 +1052,25 @@ function hitShapePoint(e,w){
     G={kind:'pt',id:e.pointerId,o,i:best,pushed:false,s0:{x,y}};return true;
   }
   const et=edgeTol(e,o),hit=et?shapeEdgeAt(o,x,y,et):null;
-  if(hit){
+  if(hit){G={kind:'edge',id:e.pointerId,o,hit,w0:w,s0:{x,y}};return true;}
+  return false;
+}
+function insertEdgePt(o,hit){
+  {
     pushUndo();const n=o.pts.length/2,j=(hit.i+1)%n;
     editPtsAll(o,p=>{const q=p.slice();q.splice((hit.i+1)*2,0,r1(p[2*hit.i]+(p[2*j]-p[2*hit.i])*hit.t),r1(p[2*hit.i+1]+(p[2*j+1]-p[2*hit.i+1])*hit.t));return q;});
     // Auf der sichtbaren Kurve liegt der neue Punkt genau unter dem Finger
     const q=o.pts.slice();q[(hit.i+1)*2]=r1(hit.lx);q[(hit.i+1)*2+1]=r1(hit.ly);o.pts=q;
     if(o.morph){const k=o.keys.find(k=>k.f===S.frame);if(k&&k.pts){const z=k.pts.slice();z[(hit.i+1)*2]=r1(hit.lx);z[(hit.i+1)*2+1]=r1(hit.ly);k.pts=z;}}
-    hoverPlus=null;G={kind:'pt',id:e.pointerId,o,i:hit.i+1,pushed:true,s0:{x,y}};requestRender();return true;
+    hoverPlus=null;shapeDims(o);afterEdit();toast('Punkt eingefügt');
   }
-  return false;
 }
 function movePt(e){
   const r=stage.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   if(!G.pushed){if(Math.hypot(x-G.s0.x,y-G.s0.y)<3)return;pushUndo();G.pushed=true;}
   const o=G.o,l=toLocal(o,toWorld(e.clientX,e.clientY)),i=G.i;
   if(o.morph){
-    if(S.autoKey){const k=keyAt(o,S.frame,true);const p=(k.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;}
+    if(S.autoKey||o.keys.some(k=>k.f===S.frame)){const k=keyAt(o,S.frame,true);const p=(k.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;}
     else{const cur=objState(o,S.ft).pts,dx=l.x-cur[i*2],dy=l.y-cur[i*2+1];editPtsAll(o,p=>{const q=p.slice();q[i*2]=r1(q[i*2]+dx);q[i*2+1]=r1(q[i*2+1]+dy);return q;});}
   }else{const p=o.pts.slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.pts=p;}
   shapeDims(o);requestRender();
@@ -1082,7 +1085,7 @@ function drawShapeHandles(o){
 }
 function updateHoverPlus(e){
   let hp=null;const o=selObj();
-  if(o&&o.type==='shape'&&objVisible(o,S.frame)&&!S.camEdit&&!S.pathFor&&(['select','shape'].includes(S.tool)||S.stylusOnly)){
+  if(o&&o.type==='shape'&&objVisible(o,S.frame)&&!S.camEdit&&!S.pathFor&&(['select','shape'].includes(S.tool)||(S.stylusOnly&&e.pointerType!=='pen'))){
     const r=stage.getBoundingClientRect(),et=edgeTol(e,o),h=et?shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,et):null;if(h)hp={id:o.id,x:h.x,y:h.y};}
   if(JSON.stringify(hp)!==JSON.stringify(hoverPlus)){hoverPlus=hp;requestRender();}
 }
@@ -1151,6 +1154,8 @@ stage.addEventListener('pointerdown',e=>{
   try{stage.setPointerCapture(e.pointerId);}catch(x){}
   if(t==='touch'&&touchPtrs().length>=2){
     if(G&&G.kind==='draw')G=null;
+    if(G&&G.pushed&&['xform','pt','cam'].includes(G.kind)){G=null;restore(undoStack.pop());updateUndo();}
+    if(G&&G.kind==='edge')G=null;
     startPinch();requestRender();return;
   }
   if(G)return;
@@ -1187,6 +1192,7 @@ stage.addEventListener('pointermove',e=>{
   else if(G.kind==='pan'){const dx=e.clientX-G.x0,dy=e.clientY-G.y0;if(Math.hypot(dx,dy)>5)G.moved=true;S.view.px=G.px0+dx;S.view.py=G.py0+dy;requestRender();}
   else if(G.kind==='xform')moveXform(e);
   else if(G.kind==='pt')movePt(e);
+  else if(G.kind==='edge'){const r=stage.getBoundingClientRect();if(Math.hypot(e.clientX-r.left-G.s0.x,e.clientY-r.top-G.s0.y)>6){G={kind:'xform',mode:'move',id:G.id,o:G.o,w0:G.w0,s0:G.s0,pushed:false,E:null};moveXform(e);}}
   else if(G.kind==='cam')moveCam(e);
   else if(G.kind==='path'){const w=toWorld(e.clientX,e.clientY),q=G.pts;if(Math.hypot(w.x-q[q.length-2],w.y-q[q.length-1])>5){q.push(r1(w.x),r1(w.y));requestRender();}}
   else if(G.kind==='shape'){G.b=toWorld(e.clientX,e.clientY);requestRender();}
@@ -1205,6 +1211,7 @@ function endPtr(e){
   else if(G.kind==='pan'){if(!G.moved&&G.deselect)select(null);G=null;}
   else if(G.kind==='xform'){const moved=G.pushed;G=null;if(moved){afterEdit();renderPanel();}}
   else if(G.kind==='pt'){const moved=G.pushed;G=null;if(moved)afterEdit();else requestRender();}
+  else if(G.kind==='edge'){const {o,hit}=G;G=null;if(e.type==='pointerup')insertEdgePt(o,hit);else requestRender();}
   else if(G.kind==='cam'){const moved=G.pushed;G=null;if(moved){afterEdit();renderPanel();}}
   else if(G.kind==='path'){if(e.type==='pointerup')finishPath();else{G=null;requestRender();}}
   else if(G.kind==='shape'||G.kind==='free'){if(e.type==='pointerup')finishShape();else{G=null;requestRender();}}
@@ -1290,6 +1297,15 @@ function makeFill(reg,w){
   ox.putImageData(id,0,0);return{t:'fill',x:bx0,y:by0,w:bw,h:bh,src:oc.toDataURL('image/png')};
 }
 // Füllungen liegen unter den Linien
+// Striche als ein Bild, wenn Radierer dabei sind (sonst würden sie fremde Linien mitlöschen)
+function flattenStrokes(list,op=1){
+  if(!list.length)return [];
+  if(op>=0.999&&!list.some(s=>s.t==='eraser'))return list.slice();
+  const b=strokesBBox(list);if(!b)return [];
+  const x0=Math.max(0,b.x),y0=Math.max(0,b.y),c=mkCanvas(b.w,b.h),x=c.getContext('2d');x.translate(-b.x,-b.y);for(const s of list)drawStroke(x,s);
+  if(op<0.999){const c2=mkCanvas(b.w,b.h),x2=c2.getContext('2d');x2.globalAlpha=op;x2.drawImage(c,0,0);return [{t:'fill',x:b.x,y:b.y,w:c2.width,h:c2.height,src:c2.toDataURL('image/png')}];}
+  return [{t:'fill',x:b.x,y:b.y,w:c.width,h:c.height,src:c.toDataURL('image/png')}];
+}
 function insertFill(arr,s){const a=arr.slice();let at=0;while(at<a.length&&a[at].t==='fill')at++;a.splice(at,0,s);return a;}
 let _hc=null;
 function hitCtx(){if(!_hc)_hc=mkCanvas(2,2).getContext('2d');_hc.setTransform(1,0,0,1,0,0);return _hc;}
@@ -1360,6 +1376,7 @@ function updateFrameInfo(){
   $('#keyBtn').disabled=!o;$('#delKeyBtn').disabled=!k;$('#keyBtn').classList.toggle('on',!!k);
 }
 function shiftTime(sc,from,d){
+  for(const a of sc.audio)if((a.start||0)*sc.fps>from+0.001)a.start=Math.max(0,(a.start||0)+d/sc.fps);
   for(const o of sc.objects){
     if(d<0)o.keys=o.keys.length>1?o.keys.filter(k=>k.f!==from):o.keys;
     o.keys.forEach(k=>{if(k.f>from||(d>0&&k.f===from&&false))k.f+=d;});
@@ -1581,7 +1598,7 @@ async function invFromObject(){
 }
 async function invFromFrame(){
   const arr=curFrames()[S.frame];if(!arr.length){toast('Auf dieser Ebene ist in diesem Frame noch nichts gezeichnet.');return;}
-  const b=strokesBBox(arr);const st=offsetStrokes(arr,-b.x,-b.y);
+  const b=strokesBBox(arr);if(!b){toast('Auf dieser Ebene ist in diesem Frame noch nichts gezeichnet.');return;}const st=offsetStrokes(arr,-b.x,-b.y);
   const item={id:uid(),name:'Zeichnung',cat:'Eigene',kind:'drawing',strokes:st,w:b.w,h:b.h,created:Date.now(),thumb:makeThumb(x=>st.forEach(s=>drawStroke(x,s)),b.w,b.h)};
   await saveInv(item);S.invSel=item.id;S.invCat='Alle';renderPanel();toast('Bild als Inventar-Teil gespeichert');
 }
@@ -1599,7 +1616,7 @@ function invInsert(item){
 }
 function invStamp(item){
   if(item.kind!=='drawing'||layerBlocked())return;pushUndo();const sc=scene();
-  const st=offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2));curFrames(sc)[S.frame].push(...st);afterEdit();toast('In Frame '+(S.frame+1)+' gemalt');
+  const st=flattenStrokes(offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2)));curFrames(sc)[S.frame].push(...st);afterEdit();toast('In Frame '+(S.frame+1)+' gemalt');
 }
 
 /* ---------- Panel ---------- */
@@ -1652,16 +1669,17 @@ function panelObj(){
   const o=selObj();
   if(!o)return `<div class="grp"><h3>Kein Objekt ausgewählt</h3><p class="hint">Tippe mit dem Auswahl-Werkzeug auf ein Objekt. Im Modus „Nur Stift“ reicht ein Finger: Der Finger verschiebt, der Stift zeichnet.</p>
     <div class="btns"><button class="btn sm" data-a="frameToObj">${icon('select')}Aktueller Frame → Objekt</button><button class="btn sm" data-a="insImage">${icon('image')}Foto</button><button class="btn sm" data-a="insVideo">${icon('video')}Video</button><button class="btn sm" data-a="addMouth">Mund für Lippensync</button></div></div>
-    <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Frame 1 an den Startpunkt schieben. 3. In der Zeitleiste einen späteren Frame antippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
+    <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Frame 1 an den Startpunkt schieben. 3. In der Zeitleiste einen späteren Frame antippen, „◆ Keyframe“ tippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
   const sc=scene(),st=objState(o,S.frame),k=o.keys.find(k=>k.f===S.frame),kb=keyBefore(o,S.frame);
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
   return `<div class="grp"><div class="row"><input id="ob-name" class="field" style="flex:1" value="${esc(o.name)}" data-ob="name" aria-label="Objektname"><button class="btn danger" data-a="objDel" title="Objekt löschen" aria-label="Objekt löschen">${icon('trash')}Löschen</button></div>
-    <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: berechnet`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
+    <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: kein Keyframe`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
+    <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
     <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
     <p class="hint">Nur eingeschaltete Dinge ändern sich von Keyframe zu Keyframe. Alles andere ist in jedem Frame gleich, egal auf welchem Frame du es änderst.</p>
-    <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: Verschieben setzt einen Keyframe auf dem aktuellen Frame</label>
+    <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: beim Verschieben automatisch Keyframes setzen</label>
     <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
   ${o.type==='mouth'?panelMouth(o):''}
   <div class="grp"><div class="sub">Position auf Frame ${S.frame+1}</div>
@@ -1798,7 +1816,7 @@ PB.addEventListener('change',e=>{
   if(t.dataset.au==='start'){const a=sc.audio.find(a=>a.id===t.dataset.id);if(a){pushUndo();a.start=Math.max(0,+t.value||0);afterEdit();}return;}
   if(t.dataset.au==='volume')return;
   if(t.dataset.ob){const o=selObj();const f=t.dataset.ob;
-    if(f==='autoKey'){S.autoKey=t.checked;LS.set('autoKey',S.autoKey);return;}
+    if(f==='autoKey'){S.autoKey=t.checked;LS.set('autoKey2',S.autoKey);renderPanel();return;}
     if(!o)return;pushUndo();
     if(f==='parent'){if(!setParent(o,t.value||null)){undoStack.pop();updateUndo();renderPanel();return;}afterEdit();renderPanel();toast(t.value?'Hängt jetzt an „'+findObj(sc,t.value).name+'“':'Hängt an nichts mehr');return;}
     if(f==='name')o.name=t.value.trim()||o.name;
@@ -1829,12 +1847,12 @@ const A={
   shCol:el=>{const o=selObj();if(!o||o.type!=='shape')return;const k=el.dataset.k;pushUndo();o[k]=el.dataset.v;o[k+'On']=true;shapeDims(o);afterEdit();renderPanel();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
   prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}if(layerBlocked())return;const fr=curFrames(sc),prev=fr[S.frame-1];
-    if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(prev);afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
+    if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev));afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
   color:el=>setColor(el.dataset.v),
   tab:el=>{S.tab=el.dataset.v;renderPanel();if(innerWidth<=1100)$('#app').classList.add('showpanel');},
   sceneGo:el=>switchScene(+el.dataset.i),
   sceneAdd:()=>{pushUndo();const sc=newScene('Szene '+(S.project.scenes.length+1));S.project.scenes.splice(S.si+1,0,sc);switchScene(S.si+1);afterEdit();},
-  sceneDup:()=>{pushUndo();const c=JSON.parse(JSON.stringify(scene()));c.id=uid();c.name=scene().name+' (Kopie)';c.objects.forEach(o=>o.id=uid());c.audio.forEach(a=>a.id=uid());S.project.scenes.splice(S.si+1,0,c);switchScene(S.si+1);afterEdit();},
+  sceneDup:()=>{pushUndo();const c=JSON.parse(JSON.stringify(scene()));c.id=uid();c.name=scene().name+' (Kopie)';const idMap={};c.objects.forEach(o=>{const n=uid();idMap[o.id]=n;o.id=n;});c.objects.forEach(o=>{if(o.parent)o.parent=idMap[o.parent]||null;});c.audio.forEach(a=>a.id=uid());S.project.scenes.splice(S.si+1,0,c);switchScene(S.si+1);afterEdit();},
   sceneUp:()=>{if(S.si<1)return;pushUndo();const a=S.project.scenes;[a[S.si-1],a[S.si]]=[a[S.si],a[S.si-1]];S.si--;refreshScenes();renderPanel();afterEdit();},
   sceneDown:()=>{const a=S.project.scenes;if(S.si>=a.length-1)return;pushUndo();[a[S.si+1],a[S.si]]=[a[S.si],a[S.si+1]];S.si++;refreshScenes();renderPanel();afterEdit();},
   sceneDel:async()=>{if(S.project.scenes.length<2)return;if(!await confirmDlg(`Szene „${scene().name}“ löschen?`,'Löschen'))return;pushUndo();S.project.scenes.splice(S.si,1);switchScene(Math.max(0,S.si-1));afterEdit();},
@@ -1870,7 +1888,7 @@ const A={
     if(a.frames.some(f=>f.length)&&!await confirmDlg(`Ebene „${a.name}“ mit allen Zeichnungen löschen?`,'Löschen'))return;
     pushUndo();const i=ls.indexOf(a);ls.splice(i,1);S.layerId=ls[Math.max(0,i-1)].id;afterEdit();renderPanel();updateModeUI();},
   layMerge:()=>{const sc=scene(),ls=layersOf(sc),a=actLayer(sc),i=ls.indexOf(a);if(i<1)return;const b=ls[i-1];pushUndo();
-    b.frames=b.frames.map((f,j)=>f.concat(a.frames[j]||[]));ls.splice(i,1);S.layerId=b.id;afterEdit();renderPanel();updateModeUI();toast('Zusammengefügt in „'+b.name+'“');},
+    b.frames=b.frames.map((f,j)=>f.concat(flattenStrokes(a.frames[j]||[],a.op??1)));ls.splice(i,1);S.layerId=b.id;afterEdit();renderPanel();updateModeUI();toast('Zusammengefügt in „'+b.name+'“');},
   pivotEdit:()=>{S.pivotEdit=!S.pivotEdit;if(S.pivotEdit&&S.tool!=='select')setTool('select');updateModeUI();renderPanel();requestRender();if(S.pivotEdit)toast('Zieh den roten Drehpunkt an die Stelle des Gelenks.');},
   pivotAt:el=>{const o=selObj();if(!o)return;pushUndo();const v=el.dataset.v,p={c:{x:0,y:0},t:{x:0,y:-o.h/2},b:{x:0,y:o.h/2},l:{x:-o.w/2,y:0},r:{x:o.w/2,y:0}}[v];setPivot(o,p);afterEdit();renderPanel();},
   pathDraw:()=>{const o=selObj();if(!o)return;S.pathFor=o.id;S.camEdit=false;updateModeUI();renderPanel();requestRender();toast('Zeichne jetzt den Weg auf der Bühne.');},
@@ -1880,7 +1898,7 @@ const A={
   pathTo:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();o.path={...o.path,f1:Math.max(S.frame,o.path.f0)};afterEdit();renderPanel();},
   addMouth:()=>{const V=guessVisemes();if(!Object.keys(V).length){toast('Lege zuerst Münder im Inventar an.');return;}
     const o=newObj('mouth','Mund',100,100,{visemes:V,cues:[]});mouthDims(o);addObject(o);toast('Mund eingefügt. Im Panel die Münder antippen.');},
-  cue:el=>{const o=selObj();if(!o||o.type!=='mouth')return;if(!S.playing)pushUndo();setCue(o,S.frame,el.dataset.v);scheduleSave();drawTimeline();
+  cue:el=>{const o=selObj();if(!o||o.type!=='mouth')return;if(!S.playing||!play.cueUndo){pushUndo();if(S.playing)play.cueUndo=true;}setCue(o,S.frame,el.dataset.v);scheduleSave();drawTimeline();
     if(!S.playing){afterEdit();renderPanel();}else{document.querySelectorAll('.vis').forEach(b=>b.classList.toggle('on',b===el));}},
   cueDel:()=>{const o=selObj();if(!o||!o.cues)return;pushUndo();o.cues=o.cues.filter(c=>c.f!==S.frame);afterEdit();renderPanel();},
   cueClear:()=>{const o=selObj();if(!o)return;pushUndo();o.cues=[];afterEdit();renderPanel();},
@@ -2037,15 +2055,15 @@ function newProjectDlg(){
   setTimeout(()=>d.querySelector('#np-name').focus(),50);
 }
 async function gcAssets(){try{const used=new Set();const ps=await DB.all('projects');
-  const walk=p=>p.scenes.forEach(s=>{if(s.bgAsset)used.add(s.bgAsset);s.objects.forEach(o=>o.assetId&&used.add(o.assetId));s.audio.forEach(a=>used.add(a.assetId));});
-  ps.forEach(walk);if(S.project)walk(S.project);inventory.forEach(i=>i.assetId&&used.add(i.assetId));
+  const walk=p=>p.scenes.forEach(s=>{if(s.bgAsset)used.add(s.bgAsset);s.objects.forEach(o=>{if(o.assetId)used.add(o.assetId);if(o.visemes)Object.values(o.visemes).forEach(v=>v.assetId&&used.add(v.assetId));});s.audio.forEach(a=>used.add(a.assetId));});
+  ps.forEach(walk);if(S.project)walk(S.project);[...undoStack,...redoStack].forEach(st=>walk({scenes:st.scenes}));inventory.forEach(i=>i.assetId&&used.add(i.assetId));
   for(const a of await DB.all('assets'))if(!used.has(a.id))await DB.del('assets',a.id);}catch(e){}}
 function blobToDataURL(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});}
 function dataURLToBlob(u){const [h,d]=u.split(',');const mime=(/data:([^;]+)/.exec(h)||[])[1]||'application/octet-stream';const bin=atob(d);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime});}
 async function backup(only,all){
   if(S.project)await saveNow();toast('Sicherung wird erstellt …');
   const projects=all?await DB.all('projects'):only;const ids=new Set();
-  projects.forEach(p=>p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>o.assetId&&ids.add(o.assetId));s.audio.forEach(a=>ids.add(a.assetId));}));
+  projects.forEach(p=>p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>{if(o.assetId)ids.add(o.assetId);if(o.visemes)Object.values(o.visemes).forEach(v=>v.assetId&&ids.add(v.assetId));});s.audio.forEach(a=>ids.add(a.assetId));}));
   const inv=all?inventory:[];inv.forEach(i=>i.assetId&&ids.add(i.assetId));
   const assets=[];for(const id of ids){const a=await DB.get('assets',id);if(a)assets.push({id:a.id,type:a.type,name:a.name,data:await blobToDataURL(a.blob)});}
   const data=JSON.stringify({app:'trickfilm-studio',version:1,saved:new Date().toISOString(),projects,inventory:inv,assets});
@@ -2217,7 +2235,7 @@ async function openProject(p){
   if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();
   S.project=p;S.si=0;S.sel=null;S.layerId=null;p.scenes.forEach(layersOf);undoStack=[];redoStack=[];updateUndo();TL.sx=0;TL.sy=0;
   $('#projName').textContent=p.name;
-  const ids=new Set();p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>o.assetId&&ids.add(o.assetId));s.audio.forEach(a=>ids.add(a.assetId));});
+  const ids=new Set();p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>{if(o.assetId)ids.add(o.assetId);if(o.visemes)Object.values(o.visemes).forEach(v=>v.assetId&&ids.add(v.assetId));});s.audio.forEach(a=>ids.add(a.assetId));});
   await Promise.all([...ids].map(id=>assetUrl(id).catch(()=>null)));
   try{await DB.put('meta',{id:'last',value:p.id});}catch(e){}
   refreshScenes();setFrame(0);renderPanel();
