@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="23.10.2026 16:38">
+<meta name="tfs-version" content="23.10.2026 16:48">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -408,11 +408,14 @@ function newScene(name,fps=12,len=24){return{id:uid(),name,fps,length:len,bg:'#f
 function layersOf(sc){if(!sc.layers){sc.layers=[{id:'L'+uid(),name:'Ebene 1',visible:true,op:1,locked:false,frames:sc.frames||Array.from({length:sc.length},()=>[])}];delete sc.frames;}return sc.layers;}
 function actLayer(sc=scene()){const ls=layersOf(sc);let l=ls.find(x=>x.id===S.layerId);if(!l){l=ls[ls.length-1];S.layerId=l.id;}return l;}
 const curFrames=(sc=scene())=>actLayer(sc).frames;
+// Was zuletzt entsteht, liegt auf seiner Ebene oben
+function nextQ(){S.project.seq=(S.project.seq||0)+1;return S.project.seq;}
+const sq=x=>x.q||0;
+const byQ=(a,b)=>sq(a)-sq(b);
 // Ebene eines Objekts. Ältere Objekte ohne Ebene: „hinter der Zeichnung“ = unterste Ebene, sonst oberste (wie früher)
 function objLayer(sc,o){const ls=layersOf(sc);return ls.find(l=>l.id===o.layer)||(o.behind?ls[0]:ls[ls.length-1]);}
 // Alle Objekte in Zeichen-Reihenfolge (hinten zuerst)
-function objectsInOrder(sc){const out=[];for(const l of layersOf(sc)){const mine=sc.objects.filter(o=>objLayer(sc,o)===l);
-  out.push(...mine.filter(o=>o.behind),...mine.filter(o=>!o.behind));}return out;}
+function objectsInOrder(sc){const out=[];for(const l of layersOf(sc))out.push(...sc.objects.filter(o=>objLayer(sc,o)===l).sort(byQ));return out;}
 function layerBlocked(){const l=actLayer();if(l.locked){toast('„'+l.name+'“ ist gesperrt. Entsperre sie im Panel „Ebenen“.');return true;}if(!l.visible){toast('„'+l.name+'“ ist ausgeblendet. Blende sie zuerst ein.');return true;}return false;}
 
 /* ---------- Assets & Medien ---------- */
@@ -546,14 +549,16 @@ function drawStroke(ctx,s){
 
 /* ---------- Bild-Caches ---------- */
 const fcache=new Map();
-function frameCanvas(sc,l,i,tint){
+function frameCanvas(sc,l,i,tint,lo,hi){
   const arr=l.frames[i];if(!arr||!arr.length)return null;
-  const key=sc.id+':'+l.id+':'+i+':'+(tint||'');let e=fcache.get(key);
+  const part=lo!=null;
+  if(part&&!arr.some(s=>s.t!=='eraser'&&sq(s)>lo&&sq(s)<=hi))return null;
+  const key=sc.id+':'+l.id+':'+i+':'+(tint||'')+(part?':'+lo+':'+hi:'');let e=fcache.get(key);
   if(e&&e.arr===arr&&e.len===arr.length&&e.ver===imgVersion){fcache.delete(key);fcache.set(key,e);return e.c;}
   let c=e?e.c:null;fcache.delete(key);
-  if(!c){if(fcache.size>=14){const k=fcache.keys().next().value;c=fcache.get(k).c;fcache.delete(k);}else c=mkCanvas(W,H);}
+  if(!c){if(fcache.size>=18){const k=fcache.keys().next().value;c=fcache.get(k).c;fcache.delete(k);}else c=mkCanvas(W,H);}
   const x=c.getContext('2d');x.setTransform(1,0,0,1,0,0);x.globalAlpha=1;x.globalCompositeOperation='source-over';x.clearRect(0,0,W,H);
-  for(const s of arr)drawStroke(x,s);
+  for(const s of arr)if(!part||(sq(s)>lo&&sq(s)<=hi)||(s.t==='eraser'&&sq(s)>hi))drawStroke(x,s);
   if(tint){x.globalCompositeOperation='source-in';x.fillStyle=tint;x.fillRect(0,0,W,H);x.globalCompositeOperation='source-over';}
   fcache.set(key,{arr,len:arr.length,ver:imgVersion,c});return c;
 }
@@ -786,17 +791,21 @@ function drawScene(ctx,sc,ft,opt){
   const ls=layersOf(sc),actFront=opt.active&&opt.actFront?ls.find(l=>l.id===opt.active.id):null;
   const objsOf=l=>sc.objects.filter(o=>objLayer(sc,o)===l);
   for(const l of actFront?ls.filter(x=>x!==actFront).concat([actFront]):ls){
-    if(!l.visible)continue;const isAct=opt.active&&opt.active.id===l.id,mine=objsOf(l);
+    if(!l.visible)continue;const isAct=opt.active&&opt.active.id===l.id,mine=objsOf(l).sort(byQ);
     opt.lop=l.op??1;
-    for(const o of mine)if(o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
     if(opt.onion&&isAct){
       const pc=fi>0&&frameCanvas(sc,l,fi-1,T.onionPrev);if(pc){ctx.globalAlpha=.28;ctx.drawImage(pc,0,0);}
       const nc=fi<sc.length-1&&frameCanvas(sc,l,fi+1,T.onionNext);if(nc){ctx.globalAlpha=.2;ctx.drawImage(nc,0,0);}
+      ctx.globalAlpha=1;
     }
-    const c=isAct&&opt.layer!==undefined?opt.layer:frameCanvas(sc,l,fi);
-    if(c){ctx.globalAlpha=l.op??1;ctx.drawImage(c,0,0,W,H);}
-    ctx.globalAlpha=1;
-    for(const o of mine)if(!o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
+    const seg=(lo,hi,top)=>{
+      let c=mine.length?frameCanvas(sc,l,fi,null,lo,hi):frameCanvas(sc,l,fi);
+      if(top&&isAct&&opt.live){if(!work)work=mkCanvas(W,H);const wx=work.getContext('2d');wx.setTransform(1,0,0,1,0,0);wx.clearRect(0,0,W,H);if(c)wx.drawImage(c,0,0);drawStroke(wx,opt.live);c=work;}
+      if(c){ctx.globalAlpha=l.op??1;ctx.drawImage(c,0,0,W,H);ctx.globalAlpha=1;}
+    };
+    let lo=-Infinity;
+    for(const o of mine){seg(lo,sq(o),false);drawObj(ctx,o,sc,ft,fi,opt,memo);lo=sq(o);}
+    seg(lo,Infinity,true);
   }
   opt.lop=1;
   ctx.restore();
@@ -833,12 +842,7 @@ function render(){
   sctx.save();sctx.translate(v.tx,v.ty);sctx.scale(v.s,v.s);
   sctx.shadowColor='rgba(0,0,0,.25)';sctx.shadowBlur=18;sctx.fillStyle='#fff';sctx.fillRect(0,0,W,H);sctx.shadowBlur=0;sctx.shadowColor='transparent';
   if(camOn()){sctx.beginPath();sctx.rect(0,0,W,H);sctx.clip();}
-  let layer;
-  if(G&&G.kind==='draw'){
-    if(!work)work=mkCanvas(W,H);const wx=work.getContext('2d');wx.clearRect(0,0,W,H);
-    const fc=frameCanvas(sc,actLayer(sc),fi);if(fc)wx.drawImage(fc,0,0);drawStroke(wx,G.s);layer=work;
-  }
-  drawScene(sctx,sc,ft,{pool,ui:true,layer,active:S.playing?null:actLayer(sc),actFront:S.actFront,onion:S.onion&&!S.playing,noCam:!camOn()});
+  drawScene(sctx,sc,ft,{pool,ui:true,live:G&&G.kind==='draw'?G.s:null,active:S.playing?null:actLayer(sc),actFront:S.actFront,onion:S.onion&&!S.playing,noCam:!camOn()});
   if(G&&(G.kind==='shape'||G.kind==='free'||G.kind==='path')){
     sctx.save();if(camOn()){const C=camMat(sc,ft);sctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}drawShapePreview(sc,fi);sctx.restore();}
   sctx.restore();
@@ -1038,7 +1042,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined};
+    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   shapeDims(o);return o;
 }
 function toLocal(o,w){return mapp(minv(objMat(o,S.ft,scene())),w.x,w.y);}
@@ -1117,7 +1121,7 @@ function shapeToolDown(e,w){
 function finishShape(){
   const o=G.kind==='free'?makeShape('free',null,null,G.pts):makeShape(S.shapeKind,G.a,G.b);
   G=null;if(!o){requestRender();toast('Für eine Freiform einmal ringsum zeichnen.');return;}
-  pushUndo();scene().objects.push(o);setTool('select');closeBrushPop();select(o.id);afterEdit();
+  pushUndo();o.q=nextQ();scene().objects.push(o);setTool('select');closeBrushPop();select(o.id);afterEdit();
   toast('Form fertig. Du kannst sie jetzt verschieben. Für die nächste Form das Formen-Werkzeug wieder antippen.');
 }
 function finishPath(){
@@ -1224,7 +1228,7 @@ function endPtr(e){
     if(!ptrs.size)G=null;return;}
   if(G.kind==='dead'){if(!ptrs.size)G=null;return;}
   if(G.id!==e.pointerId)return;
-  if(G.kind==='draw'){if(e.type==='pointerup'&&G.s.p.length){const s=G.s;pushUndo();const sc=scene();curFrames(sc)[S.frame].push(s);G=null;afterEdit();}else{G=null;requestRender();}}
+  if(G.kind==='draw'){if(e.type==='pointerup'&&G.s.p.length){const s=G.s;pushUndo();s.q=nextQ();const sc=scene();curFrames(sc)[S.frame].push(s);G=null;afterEdit();}else{G=null;requestRender();}}
   else if(G.kind==='pan'){if(!G.moved&&G.deselect)select(null);G=null;}
   else if(G.kind==='xform'){const moved=G.pushed;G=null;if(moved){afterEdit();renderPanel();}}
   else if(G.kind==='pt'){const moved=G.pushed;G=null;if(moved)afterEdit();else requestRender();}
@@ -1358,7 +1362,7 @@ function doFill(w){
   const x0=Math.floor(w.x),y0=Math.floor(w.y);let reg=null;
   if(x0>=0&&y0>=0&&x0<W&&y0<H){const c=mkCanvas(W,H),x=c.getContext('2d',{willReadFrequently:true});const fc=frameCanvas(sc,actLayer(sc),fi);if(fc)x.drawImage(fc,0,0);
     reg=floodRegion(x.getImageData(0,0,W,H).data,W,H,x0,y0);}
-  const applyFrame=()=>{if(layerBlocked())return;pushUndo();const fr=curFrames(sc);fr[fi]=insertFill(fr[fi],makeFill(reg,W));afterEdit();};
+  const applyFrame=()=>{if(layerBlocked())return;pushUndo();const fr=curFrames(sc),f=makeFill(reg,W),line=fr[fi].find(x=>x.t!=='fill');f.q=line?sq(line):nextQ();fr[fi]=insertFill(fr[fi],f);afterEdit();};
   // Geschlossene Fläche in der Zeichnung geht vor Objekten dahinter
   if(reg&&!reg.edge){applyFrame();return;}
   for(const o of ord.filter(o=>!above(o)).reverse())if(fillObject(o,w,false))return;
@@ -1449,7 +1453,7 @@ const TL={w:0,h:0,sx:0,sy:0,CW:26,RH:28,RUL:22,LW:118,drag:null};
 function resizeTl(){const r=tl.getBoundingClientRect();TL.w=r.width;TL.h=r.height;TL.LW=r.width<560?84:118;tl.width=Math.round(r.width*dpr);tl.height=Math.round(r.height*dpr);drawTimeline();}
 function tlRows(){const sc=scene();const rows=[];if(sc.cam&&sc.cam.keys.length)rows.push({k:'cam'});const ls=layersOf(sc);
   for(let i=ls.length-1;i>=0;i--){const l=ls[i];rows.push({k:'layer',l});const mine=sc.objects.filter(o=>objLayer(sc,o)===l);
-    for(const o of [...mine.filter(o=>!o.behind)].reverse().concat([...mine.filter(o=>o.behind)].reverse()))rows.push({k:'obj',o,sub:true});}for(const a of sc.audio)rows.push({k:'audio',a});return rows;}
+    for(const o of [...mine].sort(byQ).reverse())rows.push({k:'obj',o,sub:true});}for(const a of sc.audio)rows.push({k:'audio',a});return rows;}
 function audioDur(a){const el=pool.m.get('a_'+a.id);return(el&&isFinite(el.duration)&&el.duration)||a.dur||2;}
 function ensureVisible(){const x=S.ft*TL.CW;const vw=TL.w-TL.LW;if(x<TL.sx)TL.sx=Math.max(0,x-TL.CW*2);else if(x+TL.CW>TL.sx+vw)TL.sx=x-vw+TL.CW*3;}
 let tlq=false;
@@ -1572,7 +1576,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -1637,7 +1641,7 @@ function invInsert(item){
 }
 function invStamp(item){
   if(item.kind!=='drawing'||layerBlocked())return;pushUndo();const sc=scene();
-  const st=flattenStrokes(offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2)));curFrames(sc)[S.frame].push(...st);afterEdit();toast('In Frame '+(S.frame+1)+' gemalt');
+  const st=flattenStrokes(offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2))).map(x=>({...x,q:nextQ()}));curFrames(sc)[S.frame].push(...st);afterEdit();toast('In Frame '+(S.frame+1)+' gemalt');
 }
 
 /* ---------- Panel ---------- */
@@ -1848,8 +1852,8 @@ PB.addEventListener('change',e=>{
     else if(f==='ease'){const kb=keyBefore(o,S.frame);if(kb)kb.e=t.value;}
     else if(f==='inF')o.inF=clamp((+t.value||1)-1,0,sc.length-1);
     else if(f==='outF')o.outF=t.value===''?null:clamp((+t.value||1)-1,o.inF||0,sc.length-1);
-    else if(f==='behind')o.behind=t.checked;
-    else if(f==='layer'){o.layer=t.value;S.layerId=t.value;updateModeUI();}
+    else if(f==='behind'){o.behind=t.checked;if(t.checked){const l=objLayer(sc,o);let m=0;l.frames.forEach(fr=>fr.forEach(x=>{m=Math.min(m,sq(x));}));sc.objects.forEach(x=>{if(objLayer(sc,x)===l)m=Math.min(m,sq(x));});o.q=m-1;}else o.q=nextQ();}
+    else if(f==='layer'){o.layer=t.value;o.q=nextQ();S.layerId=t.value;updateModeUI();}
     else if(f==='muted')o.muted=t.checked;
     afterEdit();renderPanel();return;}
   if(t.dataset.inv){const it=inventory.find(i=>i.id===S.invSel);if(!it)return;it[t.dataset.inv]=t.value.trim()||(t.dataset.inv==='cat'?'Eigene':it.name);if(t.dataset.inv==='cat')S.invCat='Alle';saveInv(it).then(renderPanel);}
@@ -1873,7 +1877,7 @@ const A={
   shCol:el=>{const o=selObj();if(!o||o.type!=='shape')return;const k=el.dataset.k;pushUndo();o[k]=el.dataset.v;o[k+'On']=true;shapeDims(o);afterEdit();renderPanel();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
   prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}if(layerBlocked())return;const fr=curFrames(sc),prev=fr[S.frame-1];
-    if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev));afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
+    if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev).map(x=>({...x,q:nextQ()})));afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
   color:el=>setColor(el.dataset.v),
   tab:el=>{S.tab=el.dataset.v;renderPanel();if(innerWidth<=1100)$('#app').classList.add('showpanel');},
   sceneGo:el=>switchScene(+el.dataset.i),
@@ -1933,7 +1937,7 @@ const A={
   camKey:()=>{const sc=scene();pushUndo();camKeyAt(sc,S.frame,true);afterEdit();renderPanel();toast('Kamera-Keyframe auf Frame '+(S.frame+1));},
   camDelKey:()=>{const sc=scene();if(!sc.cam||!sc.cam.keys.length)return;pushUndo();if(sc.cam.keys.length===1)sc.cam.base=camState(sc,S.frame);sc.cam.keys=sc.cam.keys.filter(k=>k.f!==S.frame);afterEdit();renderPanel();},
   camReset:()=>{const sc=scene();pushUndo();sc.cam=null;afterEdit();renderPanel();toast('Kamera zurückgesetzt');},
-  objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}addObject(c);},
+  objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}c.q=nextQ();addObject(c);},
   objDel:()=>{const o=selObj();if(!o)return;pushUndo();const sc=scene();sc.objects.filter(c=>c.parent===o.id).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>x!==o);S.sel=null;afterEdit();renderPanel();toast('„'+o.name+'“ gelöscht. Rückgängig holt es zurück.');},
   invDraw:()=>openEditor(null),invPhoto:()=>pick('image/*',invFromPhoto,true),invFrame:invFromFrame,
   invCat:el=>{S.invCat=el.dataset.v;renderPanel();},
@@ -1945,7 +1949,15 @@ const A={
     await DB.del('inventory',it.id);inventory=inventory.filter(i=>i!==it);S.invSel=null;renderPanel();}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b||b.disabled)return;const f=A[b.dataset.a];if(f){e.preventDefault();f(b);}});
-function moveZ(d){const o=selObj();if(!o)return;const a=scene().objects,i=a.indexOf(o),j=clamp(i+d,0,a.length-1);if(i===j)return;pushUndo();a.splice(i,1);a.splice(j,0,o);afterEdit();}
+function moveZ(d){const o=selObj();if(!o)return;const sc=scene(),l=objLayer(sc,o);
+  // Ebene als Folge von Gruppen: einzelne Objekte und zusammenhängende Striche (im aktuellen Frame)
+  const ent=sc.objects.filter(x=>objLayer(sc,x)===l&&x!==o).map(x=>({o:x,q:sq(x)})).concat(l.frames[S.frame].map(x=>({q:sq(x)}))).sort((a,b)=>a.q-b.q);
+  const g=[];for(const e of ent){const last=g[g.length-1];if(!e.o&&last&&!last.o){last.max=e.q;}else g.push({o:e.o,min:e.q,max:e.q});}
+  const mine=sq(o);let pos=g.findIndex(x=>x.min>mine);if(pos<0)pos=g.length;
+  const t=d>0?pos:pos-1;
+  if(t<0||t>=g.length){toast(d>0?'Liegt schon ganz vorne auf dieser Ebene.':'Liegt schon ganz hinten auf dieser Ebene.');return;}
+  const lo=d>0?g[t].max:(t>0?g[t-1].max:g[t].min-2),hi=d>0?(t+1<g.length?g[t+1].min:g[t].max+2):g[t].min;
+  pushUndo();o.q=(lo+hi)/2;o.behind=false;afterEdit();renderPanel();toast(d>0?'Eins nach vorne':'Eins nach hinten');}
 function switchScene(i){if(S.playing)stopPlayback();pool.pauseAll();S.si=clamp(i,0,S.project.scenes.length-1);S.sel=null;S.layerId=null;TL.sx=0;TL.sy=0;setFrame(0);refreshScenes();renderPanel();}
 function refreshScenes(){const sel=$('#sceneSel');sel.innerHTML=S.project.scenes.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join('');sel.value=S.si;}
 $('#sceneSel').addEventListener('change',e=>switchScene(+e.target.value));
@@ -2265,6 +2277,7 @@ async function openProject(p){
   if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();
   S.project=p;S.si=0;S.sel=null;S.layerId=null;p.scenes.forEach(layersOf);
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(!o.layer||!layersOf(sc).some(l=>l.id===o.layer))o.layer=objLayer(sc,o).id;});});
+  if(p.seq==null){p.seq=0;p.scenes.forEach(sc=>sc.objects.forEach((o,i)=>{o.q=o.behind?-1000+i:++p.seq;}));}
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(o.keys&&o.keys.length===1){const k=o.keys[0];o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];}});
     if(sc.cam&&sc.cam.keys&&sc.cam.keys.length===1){sc.cam.base=camFull(sc.cam.keys[0]);sc.cam.keys=[];}});undoStack=[];redoStack=[];updateUndo();TL.sx=0;TL.sy=0;
   $('#projName').textContent=p.name;
