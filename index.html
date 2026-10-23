@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
+<meta name="tfs-version" content="23.10.2026 16:23">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -574,10 +575,13 @@ const ANIM_NEW={pos:true,s:true,r:true,o:false,tint:false};
 // Ältere Objekte ohne Einstellung: animiert wird, was sich in den Keyframes schon unterscheidet
 function animFlags(o){if(o.anim)return o.anim;const k=o.keys,d=f=>k.some(x=>(x[f]??null)!==(k[0][f]??null));return{pos:true,s:true,r:true,o:k.length>1&&d('o'),tint:k.length>1&&(d('tc')||d('ta'))};}
 const propGroup=p=>p==='x'||p==='y'?'pos':p==='tc'||p==='ta'?'tint':p;
+const BASE0={x:W/2,y:H/2,s:1,r:0,o:1,tc:TINT0,ta:0};
+// Hat ein Objekt keine Keyframes, steht seine Lage in o.base. Bearbeitet werden immer die Keyframes oder, ohne Keyframes, die Grundstellung.
+function poses(o){if(o.keys.length)return o.keys;if(!o.base)o.base={...BASE0};return [o.base];}
 function segIndex(k,ft){let i=0;while(i<k.length-1&&!(k[i].f<=ft&&ft<k[i+1].f))i++;return i;}
 function objState(o,ft){
   const k=o.keys;let st;
-  if(!k.length)st={x:W/2,y:H/2,s:1,r:0,o:1,tc:TINT0,ta:0};
+  if(!k.length){st={...BASE0,...(o.base||{})};delete st.f;if(o.morph)st.pts=o.pts;}
   else if(ft<=k[0].f){st=fullKey(k[0]);if(o.morph)st.pts=keyPts(o,0);}
   else if(ft>=k[k.length-1].f){st=fullKey(k[k.length-1]);if(o.morph)st.pts=keyPts(o,k.length-1);}
   else{
@@ -609,13 +613,13 @@ function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]|
 function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF);}
 // Ein Keyframe entsteht nur, wenn etwas geändert wird, das auch animiert werden soll
 function beginEdit(o,F,groups){const AF=animFlags(o),anim=!groups||groups.some(g=>AF[g]);const key=anim?keyAt(o,F,S.autoKey):null;
-  const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:o.keys.map(k=>({...k})),key};}
+  const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:poses(o).map(k=>({...k})),key};}
 function applyVals(E,vals){
   const AF=animFlags(E.o);
   for(const p in vals){
     if(E.key&&AF[propGroup(p)]){E.key[p]=vals[p];continue;}
     const v=vals[p];
-    E.o.keys.forEach((k,i)=>{const ok=E.orig[i];if(!ok)return;
+    poses(E.o).forEach((k,i)=>{const ok=E.orig[i];if(!ok)return;
       if(p==='x')k.x=ok.x+(v-E.base.x);else if(p==='y')k.y=ok.y+(v-E.base.y);
       else if(p==='s')k.s=ok.s*(v/(E.base.s||1));else if(p==='r')k.r=ok.r+(v-E.base.r);
       else if(p==='o')k.o=clamp(ok.o+(v-E.base.o),0,1);else if(p==='tc')k.tc=v;
@@ -645,20 +649,21 @@ function setParent(o,pid){
   const sc=scene(),np=findObj(sc,pid);
   if(np&&isDescendant(sc,o,np)){toast('Das geht nicht: Das andere Objekt hängt schon an diesem.');return false;}
   const pv=[1,0,0,1,o.px||0,o.py||0];let prevR=null;
-  const conv=o.keys.map(k=>{
-    const Mw=objMat(o,k.f,sc),NP=np?objMat(np,k.f,sc):I6,L=mmul(mmul(minv(NP),Mw),pv);
+  const P=poses(o);
+  const conv=P.map(k=>{const f=k.f??S.frame;
+    const Mw=objMat(o,f,sc),NP=np?objMat(np,f,sc):I6,L=mmul(mmul(minv(NP),Mw),pv);
     let r=Math.atan2(-L[2],L[3])*180/Math.PI;if(prevR!=null){while(r-prevR>180)r-=360;while(r-prevR<-180)r+=360;}prevR=r;
     return{x:L[4],y:L[5],s:Math.hypot(L[2],L[3]),r,flip:(L[0]*L[3]-L[1]*L[2])<0};});
   if(o.path){const Mo=parentMat(o,S.ft,sc),NP=np?objMat(np,S.ft,sc):I6,X=mmul(minv(NP),Mo);
     const q=[];for(let i=0;i<o.path.pts.length;i+=2){const p=mapp(X,o.path.pts[i],o.path.pts[i+1]);q.push(r1(p.x),r1(p.y));}o.path={...o.path,pts:q};}
   o.parent=np?np.id:null;
-  o.keys.forEach((k,i)=>{const c=conv[i];k.x=c.x;k.y=c.y;k.s=c.s;k.r=c.r;});
+  P.forEach((k,i)=>{const c=conv[i];k.x=c.x;k.y=c.y;k.s=c.s;k.r=c.r;});
   if(conv.length)o.flip=conv[0].flip;
   return true;
 }
 function setPivot(o,p){
   const dx=p.x-(o.px||0),dy=p.y-(o.py||0);if(Math.abs(dx)<1e-6&&Math.abs(dy)<1e-6)return;
-  for(const k of o.keys){const M=localMat(o,fullKey(k));k.x+=M[0]*dx+M[2]*dy;k.y+=M[1]*dx+M[3]*dy;}
+  for(const k of poses(o)){const M=localMat(o,fullKey(k));k.x+=M[0]*dx+M[2]*dy;k.y+=M[1]*dx+M[3]*dy;}
   if(o.path){const M=localMat(o,objState(o,S.ft)),ddx=M[0]*dx+M[2]*dy,ddy=M[1]*dx+M[3]*dy;o.path={...o.path,pts:o.path.pts.map((v,i)=>r1(i%2?v+ddy:v+ddx))};}
   o.px=r1(p.x);o.py=r1(p.y);
 }
@@ -667,7 +672,7 @@ function setPivot(o,p){
 const CAM0={x:W/2,y:H/2,z:1,r:0,sh:0};
 function camFull(k){return{x:k.x,y:k.y,z:k.z||1,r:k.r||0,sh:k.sh||0};}
 function camState(sc,ft){
-  const k=sc.cam&&sc.cam.keys;if(!k||!k.length)return{...CAM0};
+  const k=sc.cam&&sc.cam.keys;if(!k||!k.length)return{...CAM0,...(sc.cam&&sc.cam.base||{})};
   if(ft<=k[0].f)return camFull(k[0]);if(ft>=k[k.length-1].f)return camFull(k[k.length-1]);
   const i=segIndex(k,ft),a=camFull(k[i]),b=camFull(k[i+1]),u=(EASE[k[i].e]||EASE.linear)((ft-k[i].f)/(k[i+1].f-k[i].f));
   return{x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u,r:a.r+(b.r-a.r)*u,sh:a.sh+(b.sh-a.sh)*u};
@@ -687,11 +692,12 @@ function camKeyAt(sc,F,create){
 }
 function beginCamEdit(sc,F){
   if(!sc.cam)sc.cam={keys:[]};const base=camState(sc,F);
-  if(S.autoKey||!sc.cam.keys.length||sc.cam.keys.some(k=>k.f===F))return{sc,base,key:camKeyAt(sc,F,true)};
+  if(S.autoKey||sc.cam.keys.some(k=>k.f===F))return{sc,base,key:camKeyAt(sc,F,true)};
   return{sc,base,key:null,orig:sc.cam.keys.map(k=>({...k}))};
 }
 function applyCam(E,vals){
   if(E.key){Object.assign(E.key,vals);return;}
+  if(!E.sc.cam.keys.length){E.sc.cam.base={...camState(E.sc,0),...vals};return;}
   E.sc.cam.keys.forEach((k,i)=>{const ok=camFull(E.orig[i]);
     if('x' in vals)k.x=ok.x+(vals.x-E.base.x);if('y' in vals)k.y=ok.y+(vals.y-E.base.y);
     if('z' in vals)k.z=clamp(ok.z*(vals.z/(E.base.z||1)),0.1,10);if('r' in vals)k.r=ok.r+(vals.r-E.base.r);
@@ -967,7 +973,7 @@ function shapeDims(o){
     o.pts=o.pts.map((v,i)=>r1(i%2?v-cy:v-cx));
     if(o.px||o.py){o.px=r1((o.px||0)-cx);o.py=r1((o.py||0)-cy);}
     else{const fx=o.flip?-1:1;
-      for(const k of o.keys){const a=k.r*Math.PI/180,dx=cx*fx*k.s,dy=cy*k.s;k.x+=dx*Math.cos(a)-dy*Math.sin(a);k.y+=dx*Math.sin(a)+dy*Math.cos(a);}
+      for(const k of poses(o)){const a=k.r*Math.PI/180,dx=cx*fx*k.s,dy=cy*k.s;k.x+=dx*Math.cos(a)-dy*Math.sin(a);k.y+=dx*Math.sin(a)+dy*Math.cos(a);}
       if(o.path){const st=objState(o,S.ft),a=st.r*Math.PI/180,dx=cx*(o.flip?-1:1)*st.s,dy=cy*st.s,ddx=dx*Math.cos(a)-dy*Math.sin(a),ddy=dx*Math.sin(a)+dy*Math.cos(a);
         o.path={...o.path,pts:o.path.pts.map((v,i)=>r1(i%2?v+ddy:v+ddx))};}}
   }
@@ -1021,7 +1027,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[{f:S.frame,x:cx,y:cy,s:1,r:0,o:1,e:'linear'}]};
+    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy}};
   shapeDims(o);return o;
 }
 function toLocal(o,w){return mapp(minv(objMat(o,S.ft,scene())),w.x,w.y);}
@@ -1348,7 +1354,7 @@ function doFill(w){
 
 /* ---------- Undo ---------- */
 let undoStack=[],redoStack=[];
-function snapScene(sc){return{...sc,cam:sc.cam?{keys:sc.cam.keys.map(k=>({...k}))}:sc.cam,layers:layersOf(sc).map(l=>({...l,frames:l.frames.map(a=>a.slice())})),objects:sc.objects.map(o=>({...o,keys:o.keys.map(k=>({...k}))})),audio:sc.audio.map(a=>({...a}))};}
+function snapScene(sc){return{...sc,cam:sc.cam?{keys:sc.cam.keys.map(k=>({...k})),base:sc.cam.base?{...sc.cam.base}:undefined}:sc.cam,layers:layersOf(sc).map(l=>({...l,frames:l.frames.map(a=>a.slice())})),objects:sc.objects.map(o=>({...o,keys:o.keys.map(k=>({...k})),base:o.base?{...o.base}:o.base})),audio:sc.audio.map(a=>({...a}))};}
 function snapshot(){return{scenes:S.project.scenes.map(snapScene),si:S.si};}
 function pushUndo(){undoStack.push(snapshot());if(undoStack.length>60)undoStack.shift();redoStack.length=0;updateUndo();}
 function restore(st){S.project.scenes=st.scenes;S.si=clamp(st.si,0,st.scenes.length-1);const sc=scene();if(S.frame>=sc.length)S.frame=sc.length-1;S.ft=S.frame;
@@ -1543,7 +1549,7 @@ tl.addEventListener('wheel',e=>{e.preventDefault();TL.sx=Math.max(0,TL.sx+(e.del
 /* ---------- Auswahl & Keyframe-Aktionen ---------- */
 function select(id,keepTab){if(id!==S.sel)S.pivotEdit=false;S.sel=id;if(id&&!keepTab&&S.tab!=='inv')S.tab='obj';if(id&&keepTab&&S.tab==='scene')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();}
 function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();keyAt(o,S.frame,true);afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1));}
-function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){toast('Der letzte Keyframe bleibt, er hält die Position.');return;}
+function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){pushUndo();o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];afterEdit();renderPanel();toast('Keyframe gelöscht. Das Objekt bleibt so stehen.');return;}
   pushUndo();o.keys=o.keys.filter(x=>x!==k);afterEdit();renderPanel();}
 
 /* ---------- Einfügen ---------- */
@@ -1551,7 +1557,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[{f:S.frame,x:W/2,y:H/2,s:1,r:0,o:1,e:'linear'}],...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -1564,7 +1570,7 @@ async function insertVideoFile([f]){
     await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=rej;setTimeout(res,6000);});
     const s=fit(v.videoWidth||640,v.videoHeight||360,W*0.7,H*0.7);
     const o=newObj('video',(f.name||'Video').replace(/\.[^.]+$/,''),s.w,s.h,{assetId:id,muted:false});
-    const sc=scene();o.inF=S.frame;o.keys[0].f=S.frame;
+    const sc=scene();o.inF=S.frame;
     if(isFinite(v.duration)&&v.duration>0){const need=S.frame+Math.ceil(v.duration*sc.fps);if(need>sc.length&&need<=3000){pushUndo();setLength(sc,need);toast('Szene auf Videolänge verlängert');}}
     addObject(o);
   }catch(err){toast('Dieses Video lässt sich nicht öffnen. Safari kann MP4 und MOV abspielen.');}
@@ -1580,7 +1586,7 @@ function frameToObject(){
   const sc=scene(),arr=curFrames(sc)[S.frame];if(!arr.length){toast('Auf dieser Ebene ist in diesem Frame noch nichts gezeichnet.');return;}
   const b=strokesBBox(arr);if(!b)return;pushUndo();
   const o=newObj('drawing','Zeichnung '+(sc.objects.filter(o=>o.type==='drawing').length+1),b.w,b.h,{strokes:offsetStrokes(arr,-b.x,-b.y)});
-  o.keys[0].x=b.x+b.w/2;o.keys[0].y=b.y+b.h/2;curFrames(sc)[S.frame]=[];sc.objects.push(o);setTool('select');select(o.id);afterEdit();toast('Zeichnung ist jetzt ein Objekt. Verschieben setzt Keyframes.');
+  o.base.x=b.x+b.w/2;o.base.y=b.y+b.h/2;curFrames(sc)[S.frame]=[];sc.objects.push(o);setTool('select');select(o.id);afterEdit();toast('Zeichnung ist jetzt ein Objekt. Du kannst es verschieben.');
 }
 
 /* ---------- Inventar ---------- */
@@ -1661,7 +1667,7 @@ function panelCam(sc){
     <div class="key-state">${icon('key')}<span>${ks.length?(k?`Kamera-Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: berechnet`)+` · ${ks.length} Keyframe${ks.length===1?'':'s'}`:'Noch keine Kamera-Bewegung'}</span></div>
     ${sl('z','Zoom',20,500,st.z*100,'%')}${sl('x','X',-500,W+500,st.x,'')}${sl('y','Y',-500,H+500,st.y,'')}${sl('r','Drehung',-180,180,st.r,'°')}${sl('sh','Wackeln',0,80,st.sh,'')}
     ${ks.length?`<div class="row"><label for="cam-e">Bewegung</label><select id="cam-e" class="field" data-cam="e">${Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('')}</select></div>`:''}
-    <div class="btns"><button class="btn sm ${k?'on':''}" data-a="camKey">${icon('key')}Keyframe</button><button class="btn sm" data-a="camDelKey" ${k&&ks.length>1?'':'disabled'}>Key löschen</button><button class="btn sm danger" data-a="camReset" ${ks.length?'':'disabled'}>Zurücksetzen</button></div>
+    <div class="btns"><button class="btn sm ${k?'on':''}" data-a="camKey">${icon('key')}Keyframe</button><button class="btn sm" data-a="camDelKey" ${k?'':'disabled'}>Key löschen</button><button class="btn sm danger" data-a="camReset" ${ks.length||(sc.cam&&sc.cam.base)?'':'disabled'}>Zurücksetzen</button></div>
     <p class="hint">Mit „Kamera bearbeiten“ siehst du den Kamera-Rahmen auf der Bühne: verschieben, an der Ecke zoomen, oben drehen. Wackeln ist gut für Erdbeben oder Explosionen.</p></div>`;
 }
 function slider(p,label,min,max,val,unit){return `<div class="row"><label for="tr-${p}">${label}</label><input id="tr-${p}" type="range" min="${min}" max="${max}" step="1" value="${Math.round(val)}" data-tr="${p}"><span class="val" id="trv-${p}">${Math.round(val)}${unit}</span></div>`;}
@@ -1674,7 +1680,7 @@ function panelObj(){
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
   return `<div class="grp"><div class="row"><input id="ob-name" class="field" style="flex:1" value="${esc(o.name)}" data-ob="name" aria-label="Objektname"><button class="btn danger" data-a="objDel" title="Objekt löschen" aria-label="Objekt löschen">${icon('trash')}Löschen</button></div>
     <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: kein Keyframe`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
-    <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
+    <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
     <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
@@ -1893,7 +1899,7 @@ const A={
   pivotAt:el=>{const o=selObj();if(!o)return;pushUndo();const v=el.dataset.v,p={c:{x:0,y:0},t:{x:0,y:-o.h/2},b:{x:0,y:o.h/2},l:{x:-o.w/2,y:0},r:{x:o.w/2,y:0}}[v];setPivot(o,p);afterEdit();renderPanel();},
   pathDraw:()=>{const o=selObj();if(!o)return;S.pathFor=o.id;S.camEdit=false;updateModeUI();renderPanel();requestRender();toast('Zeichne jetzt den Weg auf der Bühne.');},
   pathCancel:()=>{S.pathFor=null;updateModeUI();renderPanel();},
-  pathDel:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();const st=objState(o,S.frame);o.path=null;o.keys.forEach(k=>{k.x=st.x;k.y=st.y;});afterEdit();renderPanel();toast('Pfad gelöscht');},
+  pathDel:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();const st=objState(o,S.frame);o.path=null;poses(o).forEach(k=>{k.x=st.x;k.y=st.y;});afterEdit();renderPanel();toast('Pfad gelöscht');},
   pathFrom:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();o.path={...o.path,f0:Math.min(S.frame,o.path.f1)};afterEdit();renderPanel();},
   pathTo:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();o.path={...o.path,f1:Math.max(S.frame,o.path.f0)};afterEdit();renderPanel();},
   addMouth:()=>{const V=guessVisemes();if(!Object.keys(V).length){toast('Lege zuerst Münder im Inventar an.');return;}
@@ -1905,9 +1911,9 @@ const A={
   cueAuto:()=>{const o=selObj();if(o&&o.type==='mouth')autoCues(o);},
   camEdit:()=>{S.camEdit=!S.camEdit;S.pathFor=null;if(S.camEdit){S.tab='scene';renderPanel();}else renderPanel();updateModeUI();requestRender();},
   camKey:()=>{const sc=scene();pushUndo();camKeyAt(sc,S.frame,true);afterEdit();renderPanel();toast('Kamera-Keyframe auf Frame '+(S.frame+1));},
-  camDelKey:()=>{const sc=scene();if(!sc.cam||sc.cam.keys.length<2)return;pushUndo();sc.cam.keys=sc.cam.keys.filter(k=>k.f!==S.frame);afterEdit();renderPanel();},
+  camDelKey:()=>{const sc=scene();if(!sc.cam||!sc.cam.keys.length)return;pushUndo();if(sc.cam.keys.length===1)sc.cam.base=camState(sc,S.frame);sc.cam.keys=sc.cam.keys.filter(k=>k.f!==S.frame);afterEdit();renderPanel();},
   camReset:()=>{const sc=scene();pushUndo();sc.cam=null;afterEdit();renderPanel();toast('Kamera zurückgesetzt');},
-  objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});addObject(c);},
+  objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}addObject(c);},
   objDel:()=>{const o=selObj();if(!o)return;pushUndo();const sc=scene();sc.objects.filter(c=>c.parent===o.id).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>x!==o);S.sel=null;afterEdit();renderPanel();toast('„'+o.name+'“ gelöscht. Rückgängig holt es zurück.');},
   invDraw:()=>openEditor(null),invPhoto:()=>pick('image/*',invFromPhoto,true),invFrame:invFromFrame,
   invCat:el=>{S.invCat=el.dataset.v;renderPanel();},
@@ -2010,7 +2016,8 @@ async function renderHome(){
     </div>
     <section class="home-foot"><div class="sub">Sicherung</div>
       <p class="hint">Projekte und Inventar liegen nur auf diesem Gerät. Sichere ab und zu alles als Datei, zum Beispiel in iCloud Drive.</p>
-      <div class="btns"><button class="btn sm" data-h="bakAll">${icon('export')}Alles sichern</button><button class="btn sm" data-h="imp">Sicherung laden</button></div></section>
+      <div class="btns"><button class="btn sm" data-h="bakAll">${icon('export')}Alles sichern</button><button class="btn sm" data-h="imp">Sicherung laden</button></div>
+      ${document.querySelector('meta[name="tfs-version"]')?`<div class="sub" style="margin-top:12px">App-Version</div><div class="row"><span class="hint" style="margin:0">Stand vom ${esc(document.querySelector('meta[name="tfs-version"]').content)}</span><button class="btn sm" data-h="upd">Nach Update suchen</button></div>`:''}</section>
   </div>`;
   home.querySelectorAll('canvas[data-pthumb]').forEach(c=>{const p=list.find(x=>x.id===c.dataset.pthumb);if(p)c.getContext('2d').drawImage(projectThumb(p,320,180),0,0);});
   home._list=list;
@@ -2037,6 +2044,9 @@ home.addEventListener('click',async e=>{
     await DB.del('projects',p.id);homeMenu=null;await gcAssets();renderHome();toast('Projekt gelöscht');}
   else if(act==='bakAll')backup(null,true);
   else if(act==='imp')pick('.json,application/json',importBackup);
+  else if(act==='upd'){toast('Suche nach Update …');if(S.project)await saveNow();
+    try{const r=await navigator.serviceWorker.getRegistration();if(r)await r.update();}catch(e){}
+    setTimeout(()=>location.reload(),600);}
 });
 function newProjectDlg(){
   const d=openModal(`<h2>Neues Projekt</h2>
@@ -2233,7 +2243,9 @@ function sampleProject(){
 /* ---------- Projekt öffnen ---------- */
 async function openProject(p){
   if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();
-  S.project=p;S.si=0;S.sel=null;S.layerId=null;p.scenes.forEach(layersOf);undoStack=[];redoStack=[];updateUndo();TL.sx=0;TL.sy=0;
+  S.project=p;S.si=0;S.sel=null;S.layerId=null;p.scenes.forEach(layersOf);
+  p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(o.keys&&o.keys.length===1){const k=o.keys[0];o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];}});
+    if(sc.cam&&sc.cam.keys&&sc.cam.keys.length===1){sc.cam.base=camFull(sc.cam.keys[0]);sc.cam.keys=[];}});undoStack=[];redoStack=[];updateUndo();TL.sx=0;TL.sy=0;
   $('#projName').textContent=p.name;
   const ids=new Set();p.scenes.forEach(s=>{if(s.bgAsset)ids.add(s.bgAsset);s.objects.forEach(o=>{if(o.assetId)ids.add(o.assetId);if(o.visemes)Object.values(o.visemes).forEach(v=>v.assetId&&ids.add(v.assetId));});s.audio.forEach(a=>ids.add(a.assetId));});
   await Promise.all([...ids].map(id=>assetUrl(id).catch(()=>null)));

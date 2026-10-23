@@ -1,9 +1,10 @@
 // Offline-Speicher für Trickfilm Studio
-const V = 'tfs-b3b0d1c6df';
+const V = 'tfs-7c81e60b04';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
+  // cache:'reload' holt die Dateien am Zwischenspeicher des Browsers vorbei frisch vom Server
+  e.waitUntil(caches.open(V).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -18,7 +19,7 @@ self.addEventListener('fetch', e => {
   if (req.mode === 'navigate') {
     // Online: neueste Version holen. Offline: gespeicherte Version.
     e.respondWith(
-      fetch(req).then(res => {
+      fetch(new Request(req.url, { cache: 'no-store' })).then(res => {
         const copy = res.clone();
         caches.open(V).then(c => c.put('./index.html', copy));
         return res;
