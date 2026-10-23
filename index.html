@@ -1029,17 +1029,21 @@ function shapeScreenPts(o){const st=objState(o,S.ft),pts=st.pts||o.pts,M=mmul(wo
 // Nächste Stelle auf dem Rand (für das „+“)
 function shapeEdgeAt(o,x,y,maxD){
   const {pts,scr,M}=shapeScreenPts(o);
-  for(const p of scr)if(Math.hypot(p.x-x,p.y-y)<20)return null;
+  for(const p of scr)if(Math.hypot(p.x-x,p.y-y)<14)return null;
   let best=null,bd=maxD;
   for(const [lx,ly,i,t] of shapeSamples(o,pts,24)){const p=mapp(M,lx,ly),d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best={x:p.x,y:p.y,lx,ly,i,t};}}
   return best;
 }
+function shapeScreenSize(o){const h=handles(o),p=h.poly;return Math.min(Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),Math.hypot(p[3].x-p[0].x,p[3].y-p[0].y));}
+// Wie nah man an Punkt bzw. Rand sein muss. Anfassen in der Fläche verschiebt immer die ganze Form.
+function ptTol(e,o){const big=shapeScreenSize(o);return big<50?0:e.pointerType==='mouse'?10:(big<110?12:16);}
+function edgeTol(e,o){const big=shapeScreenSize(o);return big<100?0:e.pointerType==='mouse'?8:12;}
 function editPtsAll(o,fn){o.pts=fn(o.pts);for(const k of o.keys)if(k.pts)k.pts=fn(k.pts);}
 let lastPtTap={id:null,i:-1,t:0};
 function hitShapePoint(e,w){
   const o=selObj();if(!o||o.type!=='shape'||!objVisible(o,S.frame))return false;
   const r=stage.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,{scr}=shapeScreenPts(o);
-  let best=-1,bd=20;scr.forEach((p,i)=>{const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=i;}});
+  let best=-1,bd=ptTol(e,o);scr.forEach((p,i)=>{const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=i;}});
   if(best>=0){
     const now=performance.now(),n=o.pts.length/2;
     if(lastPtTap.id===o.id&&lastPtTap.i===best&&now-lastPtTap.t<380&&n>(o.closed?3:2)){
@@ -1047,7 +1051,7 @@ function hitShapePoint(e,w){
     lastPtTap={id:o.id,i:best,t:now};
     G={kind:'pt',id:e.pointerId,o,i:best,pushed:false,s0:{x,y}};return true;
   }
-  const hit=shapeEdgeAt(o,x,y,e.pointerType==='mouse'?14:24);
+  const et=edgeTol(e,o),hit=et?shapeEdgeAt(o,x,y,et):null;
   if(hit){
     pushUndo();const n=o.pts.length/2,j=(hit.i+1)%n;
     editPtsAll(o,p=>{const q=p.slice();q.splice((hit.i+1)*2,0,r1(p[2*hit.i]+(p[2*j]-p[2*hit.i])*hit.t),r1(p[2*hit.i+1]+(p[2*j+1]-p[2*hit.i+1])*hit.t));return q;});
@@ -1079,11 +1083,13 @@ function drawShapeHandles(o){
 function updateHoverPlus(e){
   let hp=null;const o=selObj();
   if(o&&o.type==='shape'&&objVisible(o,S.frame)&&!S.camEdit&&!S.pathFor&&(['select','shape'].includes(S.tool)||S.stylusOnly)){
-    const r=stage.getBoundingClientRect(),h=shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,e.pointerType==='mouse'?14:24);if(h)hp={id:o.id,x:h.x,y:h.y};}
+    const r=stage.getBoundingClientRect(),et=edgeTol(e,o),h=et?shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,et):null;if(h)hp={id:o.id,x:h.x,y:h.y};}
   if(JSON.stringify(hp)!==JSON.stringify(hoverPlus)){hoverPlus=hp;requestRender();}
 }
 function shapeToolDown(e,w){
+  const hh=hitHandle(e.clientX,e.clientY);if(hh){startXform(hh,e,w);return;}
   if(hitShapePoint(e,w))return;
+  const sel=selObj();if(sel&&hitTest(w)===sel){startXform('move',e,w);return;}
   if(S.shapeKind==='free')G={kind:'free',id:e.pointerId,pts:[r1(w.x),r1(w.y)]};
   else G={kind:'shape',id:e.pointerId,a:w,b:w};
   requestRender();
@@ -1091,7 +1097,8 @@ function shapeToolDown(e,w){
 function finishShape(){
   const o=G.kind==='free'?makeShape('free',null,null,G.pts):makeShape(S.shapeKind,G.a,G.b);
   G=null;if(!o){requestRender();toast('Für eine Freiform einmal ringsum zeichnen.');return;}
-  pushUndo();scene().objects.push(o);select(o.id);afterEdit();
+  pushUndo();scene().objects.push(o);setTool('select');closeBrushPop();select(o.id);afterEdit();
+  toast('Form fertig. Du kannst sie jetzt verschieben. Für die nächste Form das Formen-Werkzeug wieder antippen.');
 }
 function finishPath(){
   const o=findObj(scene(),S.pathFor),raw=G.pts;G=null;
