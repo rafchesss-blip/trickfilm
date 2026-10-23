@@ -1752,7 +1752,7 @@ PB.addEventListener('input',e=>{
 });
 PB.addEventListener('change',e=>{
   const t=e.target,sc=scene();
-  if(t.dataset.tr){PB._edit=null;afterEdit();renderPanel();return;}
+  if(t.dataset.tr){PB._edit=null;afterEdit();if(t.type==='color'){const ta=$('#tr-ta'),st=objState(selObj()||{keys:[]},S.frame);if(ta){ta.value=Math.round(st.ta*100);$('#trv-ta').textContent=Math.round(st.ta*100)+'%';}}else renderPanel();return;}
   if(t.dataset.ly){const l=actLayer();if(t.dataset.ly==='name'){pushUndo();l.name=t.value.trim()||l.name;}PB._ly=false;afterEdit();renderPanel();updateModeUI();return;}
   if(t.dataset.cam){if(t.dataset.cam==='e'){const ks=sc.cam&&sc.cam.keys||[];const kb=[...ks].reverse().find(k=>k.f<=S.frame);if(kb){pushUndo();kb.e=t.value;}}
     PB._cam=null;afterEdit();renderPanel();return;}
@@ -1766,13 +1766,13 @@ PB.addEventListener('change',e=>{
     shapeDims(o);afterEdit();renderPanel();return;}
   if(t.dataset.sh){const o=selObj();if(!o)return;
     if(t.type==='checkbox'){pushUndo();o[t.dataset.sh]=t.checked;shapeDims(o);}
-    PB._sh=false;afterEdit();renderPanel();return;}
+    PB._sh=false;afterEdit();if(t.type!=='color')renderPanel();return;}
   if(t.dataset.sc){const f=t.dataset.sc;
     if(f==='name'){sc.name=t.value.trim()||sc.name;refreshScenes();}
     else if(f==='fps'){pushUndo();sc.fps=clamp(Math.round(+t.value)||12,1,60);}
     else if(f==='length'){pushUndo();setLength(sc,+t.value);}
     else if(f==='bg'){sc.bg=t.value;}
-    afterEdit();renderPanel();refreshScenes();return;}
+    afterEdit();if(t.type!=='color')renderPanel();else{const c=PB.querySelector('canvas[data-thumb="'+S.si+'"]');if(c){const x=c.getContext('2d');x.setTransform(c.width/W,0,0,c.height/H,0,0);drawScene(x,sc,0,{pool});}}refreshScenes();return;}
   if(t.dataset.au==='start'){const a=sc.audio.find(a=>a.id===t.dataset.id);if(a){pushUndo();a.start=Math.max(0,+t.value||0);afterEdit();}return;}
   if(t.dataset.au==='volume')return;
   if(t.dataset.ob){const o=selObj();const f=t.dataset.ob;
@@ -1891,16 +1891,20 @@ function renderTools(){
   $('#stageWrap').classList.toggle('draw',['pen','marker','eraser','fill','shape'].includes(S.tool));
 }
 function setTool(t){S.tool=t;LS.set('tool',t);renderTools();updateModeUI();}
-function setColor(c){S.color=c;LS.set('color',c);S.recent=[c,...S.recent.filter(x=>x!==c)].slice(0,8);LS.set('recent',S.recent);if(S.tool==='eraser'||S.tool==='select'||S.tool==='hand')S.tool='pen';renderTools();if(!$('#brushPop').hidden)renderBrushPop();}
+function setColor(c,fromPicker){S.color=c;LS.set('color',c);S.recent=[c,...S.recent.filter(x=>x!==c)].slice(0,8);LS.set('recent',S.recent);if(S.tool==='eraser'||S.tool==='select'||S.tool==='hand')S.tool='pen';renderTools();updateModeUI();
+  const bp=$('#brushPop');if(bp.hidden)return;
+  // Den offenen Farbwähler nicht wegwerfen, sonst schließt ihn das iPad
+  if(fromPicker){bp.querySelectorAll('.pal button').forEach(b=>b.classList.toggle('on',b.dataset.v===c));const v=$('#bp-cv');if(v)v.textContent=c;}
+  else if(bp.querySelector('#bp-c'))renderBrushPop();}
 const PAL=['#1b1f2a','#ffffff','#7d8590','#e5484d','#f76b15','#ffc53d','#46a758','#12a594','#0090ff','#3e63dd','#8e4ec6','#d6409f','#7a4b2a','#c48a5a','#f2c6a0','#ffd9e2','#bfe3f7','#d6f2c4'];
 function renderBrushPop(){
   const p=$('#brushPop');
   p.innerHTML=`<div class="pal">${PAL.map(c=>`<button data-a="color" data-v="${c}" class="${c===S.color?'on':''}" style="background:${c}" aria-label="Farbe ${c}"></button>`).join('')}</div>
-   <div class="row"><label for="bp-c">Eigene</label><input id="bp-c" type="color" value="${S.color}"><span class="val">${S.color}</span></div>
+   <div class="row"><label for="bp-c">Eigene</label><input id="bp-c" type="color" value="${S.color}"><span class="val" id="bp-cv">${S.color}</span></div>
    <div class="row"><label for="bp-s">Größe</label><input id="bp-s" type="range" min="1" max="120" value="${S.size}"><span class="val" id="bp-sv">${S.size}px</span></div>
    <div class="row"><label for="bp-a">Deckkraft</label><input id="bp-a" type="range" min="5" max="100" value="${Math.round(S.alpha*100)}"><span class="val" id="bp-av">${Math.round(S.alpha*100)}%</span></div>`;
-  $('#bp-c').addEventListener('input',e=>{S.color=e.target.value;$('#swatchBtn').style.background=S.color;});
-  $('#bp-c').addEventListener('change',e=>setColor(e.target.value));
+  $('#bp-c').addEventListener('input',e=>{S.color=e.target.value;$('#swatchBtn').style.background=S.color;const v=$('#bp-cv');if(v)v.textContent=S.color;});
+  $('#bp-c').addEventListener('change',e=>setColor(e.target.value,true));
   $('#bp-s').addEventListener('input',e=>{S.size=+e.target.value;LS.set('size',S.size);$('#bp-sv').textContent=S.size+'px';document.querySelector('.size-ind').textContent=S.size+'px';});
   $('#bp-a').addEventListener('input',e=>{S.alpha=+e.target.value/100;LS.set('alpha',S.alpha);$('#bp-av').textContent=e.target.value+'%';});
 }
