@@ -150,7 +150,7 @@ input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-rad
 
 /* Timeline */
 #tl{grid-area:tl;display:flex;flex-direction:column;padding-block:8px 10px;gap:6px;min-width:0}
-#tlbar{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+#tlbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-bottom:2px}
 #tlbar::-webkit-scrollbar{display:none}
 #frameInfo{font:500 13px var(--f-mono);white-space:nowrap;padding:0 8px;font-variant-numeric:tabular-nums}
 #tlWrap{position:relative;height:168px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel)}
@@ -218,6 +218,10 @@ details summary{list-style:none}
   #panel{position:fixed;z-index:20;right:12px;top:64px;bottom:12px;width:min(340px,calc(100% - 24px));margin:0;transform:translateX(calc(100% + 24px));transition:transform .2s ease;box-shadow:0 16px 40px rgba(10,20,40,.25);display:flex!important}
   #app.showpanel #panel{transform:none}
 }
+@media (max-width:900px){
+  .brand{display:none}
+  [data-a=insImage] .lbl-t,[data-a=insVideo] .lbl-t,[data-a=insAudio] .lbl-t,[data-a=export] .lbl-t{display:none}
+}
 @media (max-width:700px){
   .lbl-t{display:none}
   .btn{padding:0 10px}
@@ -232,8 +236,8 @@ details summary{list-style:none}
     <button class="btn icon" data-a="home" data-ic="home" title="Alle Projekte" aria-label="Alle Projekte"></button>
     <button class="brand" data-a="home" title="Alle Projekte"><b>Trickfilm Studio</b><span id="projName"></span></button>
     <select id="sceneSel" class="sel" aria-label="Szene wählen"></select>
-    <button class="btn icon" data-a="undo" id="undoBtn" title="Rückgängig (2-Finger-Tipp)" aria-label="Rückgängig"></button>
-    <button class="btn icon" data-a="redo" id="redoBtn" title="Wiederholen" aria-label="Wiederholen"></button>
+    <button class="btn" data-a="undo" id="undoBtn" title="Rückgängig (Tipp mit 2 Fingern)" aria-label="Rückgängig"></button>
+    <button class="btn" data-a="redo" id="redoBtn" title="Wiederholen (Tipp mit 3 Fingern)" aria-label="Wiederholen"></button>
     <span class="grow"></span>
     <button class="btn" data-a="insImage" data-ic="image"><span class="lbl-t">Foto</span></button>
     <button class="btn" data-a="insVideo" data-ic="video"><span class="lbl-t">Video</span></button>
@@ -263,15 +267,15 @@ details summary{list-style:none}
 
   <section id="tl">
     <div id="tlbar">
-      <button class="btn icon" data-a="prev" data-ic="prev" title="Vorheriges Bild" aria-label="Vorheriges Bild"></button>
+      <button class="btn icon" data-a="prev" data-ic="prev" title="Vorheriger Frame" aria-label="Vorheriger Frame"></button>
       <button class="btn icon primary" data-a="play" id="playBtn" title="Szene abspielen (Leertaste)" aria-label="Abspielen"></button>
-      <button class="btn icon" data-a="next" data-ic="next" title="Nächstes Bild" aria-label="Nächstes Bild"></button>
+      <button class="btn icon" data-a="next" data-ic="next" title="Nächster Frame" aria-label="Nächster Frame"></button>
       <span id="frameInfo"></span>
       <span class="sep"></span>
-      <button class="btn sm" data-a="addFrame" data-ic="plus">Bild</button>
-      <button class="btn sm" data-a="dupFrame" data-ic="copy">Kopieren</button>
-      <button class="btn sm" data-a="prevCopy" data-ic="prevcopy" title="Das vorherige Bild auf dieses Bild kopieren (P)">Vorheriges übernehmen</button>
-      <button class="btn sm" data-a="delFrame" data-ic="trash">Löschen</button>
+      <button class="btn sm" data-a="addFrame" data-ic="plus" title="Neuen leeren Frame nach diesem einfügen">Frame hinzufügen</button>
+      <button class="btn sm" data-a="dupFrame" data-ic="copy" title="Diesen Frame verdoppeln">Frame kopieren</button>
+      <button class="btn sm" data-a="prevCopy" data-ic="prevcopy" title="Den vorherigen Frame auf diesen Frame kopieren (P)">Vorherigen übernehmen</button>
+      <button class="btn sm danger" data-a="delFrame" data-ic="trash" title="Diesen Frame löschen">Frame löschen</button>
       <span class="sep"></span>
       <button class="btn sm" data-a="setKey" id="keyBtn" data-ic="key">Keyframe</button>
       <button class="btn sm" data-a="delKey" id="delKeyBtn">Key löschen</button>
@@ -539,6 +543,11 @@ function fullKey(k){return{x:k.x,y:k.y,s:k.s,r:k.r,o:k.o,tc:k.tc||TINT0,ta:k.ta|
 // Formen mit „Verwandeln“: Punkte des Keyframes, sonst des letzten Keyframes davor, sonst die Grundform
 function keyPts(o,i){for(let j=i;j>=0;j--)if(o.keys[j].pts)return o.keys[j].pts;return o.pts;}
 function lerpPts(a,b,u){if(!a||!b||a===b||a.length!==b.length)return a;const r=new Array(a.length);for(let i=0;i<a.length;i++)r[i]=a[i]+(b[i]-a[i])*u;return r;}
+const ANIM=[['pos','Position'],['s','Größe'],['r','Drehung'],['o','Deckkraft'],['tint','Farbe']];
+const ANIM_NEW={pos:true,s:true,r:true,o:false,tint:false};
+// Ältere Objekte ohne Einstellung: animiert wird, was sich in den Keyframes schon unterscheidet
+function animFlags(o){if(o.anim)return o.anim;const k=o.keys,d=f=>k.some(x=>(x[f]??null)!==(k[0][f]??null));return{pos:true,s:true,r:true,o:k.length>1&&d('o'),tint:k.length>1&&(d('tc')||d('ta'))};}
+const propGroup=p=>p==='x'||p==='y'?'pos':p==='tc'||p==='ta'?'tint':p;
 function segIndex(k,ft){let i=0;while(i<k.length-1&&!(k[i].f<=ft&&ft<k[i+1].f))i++;return i;}
 function objState(o,ft){
   const k=o.keys;let st;
@@ -552,6 +561,7 @@ function objState(o,ft){
     st={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,s:a.s+(b.s-a.s)*u,r:a.r+(b.r-a.r)*u,o:a.o+(b.o-a.o)*u,tc,ta:a.ta+(b.ta-a.ta)*u};
     if(o.morph)st.pts=lerpPts(keyPts(o,i),keyPts(o,i+1),u);
   }
+  if(k.length>1){const F=animFlags(o),k0=k[0];if(!F.pos){st.x=k0.x;st.y=k0.y;}if(!F.s)st.s=k0.s;if(!F.r)st.r=k0.r;if(!F.o)st.o=k0.o;if(!F.tint){st.tc=k0.tc||TINT0;st.ta=k0.ta||0;}}
   if(o.path&&o.path.pts&&o.path.pts.length>=4){const p=pathAt(o.path.pts,pathU(o.path,ft));st.x=p.x;st.y=p.y;if(o.path.orient)st.r+=p.ang;}
   return st;
 }
@@ -571,17 +581,20 @@ function keyAt(o,F,create){
 function objStateNoPath(o,ft){const p=o.path;o.path=null;const st=objState(o,ft);o.path=p;return st;}
 function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]||null;}
 function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF);}
-function beginEdit(o,F){const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:o.keys.map(k=>({...k})),key:S.autoKey?keyAt(o,F,true):null};}
+// Ein Keyframe entsteht nur, wenn etwas geändert wird, das auch animiert werden soll
+function beginEdit(o,F,groups){const AF=animFlags(o);const key=S.autoKey&&(!groups||groups.some(g=>AF[g]))?keyAt(o,F,true):null;
+  const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:o.keys.map(k=>({...k})),key};}
 function applyVals(E,vals){
-  if(E.key){Object.assign(E.key,vals);return;}
-  E.o.keys.forEach((k,i)=>{const ok=E.orig[i];
-    if('x' in vals)k.x=ok.x+(vals.x-E.base.x);
-    if('y' in vals)k.y=ok.y+(vals.y-E.base.y);
-    if('s' in vals)k.s=ok.s*(vals.s/(E.base.s||1));
-    if('r' in vals)k.r=ok.r+(vals.r-E.base.r);
-    if('o' in vals)k.o=clamp(ok.o+(vals.o-E.base.o),0,1);
-    if('tc' in vals)k.tc=vals.tc;
-    if('ta' in vals)k.ta=clamp((ok.ta||0)+(vals.ta-E.base.ta),0,1);});
+  const AF=animFlags(E.o);
+  for(const p in vals){
+    if(E.key&&AF[propGroup(p)]){E.key[p]=vals[p];continue;}
+    const v=vals[p];
+    E.o.keys.forEach((k,i)=>{const ok=E.orig[i];if(!ok)return;
+      if(p==='x')k.x=ok.x+(v-E.base.x);else if(p==='y')k.y=ok.y+(v-E.base.y);
+      else if(p==='s')k.s=ok.s*(v/(E.base.s||1));else if(p==='r')k.r=ok.r+(v-E.base.r);
+      else if(p==='o')k.o=clamp(ok.o+(v-E.base.o),0,1);else if(p==='tc')k.tc=v;
+      else if(p==='ta')k.ta=clamp((ok.ta||0)+(v-E.base.ta),0,1);});
+  }
 }
 
 /* ---------- Matrizen, Gelenke ---------- */
@@ -979,7 +992,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line||!S.shapeFill?S.color:'#1b1f2a',strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):clamp(S.size,3,30),
-    w:10,h:10,inF:0,outF:null,behind:false,flip:false,keys:[{f:S.frame,x:cx,y:cy,s:1,r:0,o:1,e:'linear'}]};
+    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[{f:S.frame,x:cx,y:cy,s:1,r:0,o:1,e:'linear'}]};
   shapeDims(o);return o;
 }
 function toLocal(o,w){return mapp(minv(objMat(o,S.ft,scene())),w.x,w.y);}
@@ -1139,7 +1152,7 @@ function endPtr(e){
   if(e.pointerType==='pen'){penDown=false;lastPenUp=performance.now();}
   if(!p)return;ptrs.delete(e.pointerId);
   if(!G)return;
-  if(G.kind==='pinch'){if(touchPtrs().length<2){const quick=performance.now()-G.t0<320&&G.maxMove<14&&G.n===2;G={kind:'dead'};if(quick&&e.type==='pointerup')undo();}
+  if(G.kind==='pinch'){if(touchPtrs().length<2){const n=G.n,quick=performance.now()-G.t0<350&&G.maxMove<16&&(n===2||n===3);G={kind:'dead'};if(quick&&e.type==='pointerup'){if(n===3)redo();else undo();}}
     if(!ptrs.size)G=null;return;}
   if(G.kind==='dead'){if(!ptrs.size)G=null;return;}
   if(G.id!==e.pointerId)return;
@@ -1185,7 +1198,7 @@ function startXform(mode,e,w){
 function moveXform(e){
   const r=stage.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top,o=G.o,sc=scene();
   if(!G.pushed){if(Math.hypot(sx-G.s0.x,sy-G.s0.y)<3)return;pushUndo();G.pushed=true;
-    if(G.mode!=='pivot')G.E=beginEdit(o,S.frame);
+    if(G.mode!=='pivot')G.E=beginEdit(o,S.frame,[{move:'pos',scale:'s',rotate:'r'}[G.mode]]);
     G.PMi=minv(parentMat(o,S.ft,sc));G.path0=o.path;const pv=objGeom(o,S.ft).pivot;G.c=toScreen(pv.x,pv.y);}
   const E=G.E,w=toWorld(e.clientX,e.clientY);
   if(G.mode==='pivot')setPivot(o,toLocal(o,w));
@@ -1235,7 +1248,7 @@ function pushUndo(){undoStack.push(snapshot());if(undoStack.length>60)undoStack.
 function restore(st){S.project.scenes=st.scenes;S.si=clamp(st.si,0,st.scenes.length-1);const sc=scene();if(S.frame>=sc.length)S.frame=sc.length-1;S.ft=S.frame;
   if(S.sel&&!selObj())S.sel=null;afterEdit();refreshScenes();renderPanel();}
 function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop());updateUndo();toast('Rückgängig');}
-function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());updateUndo();}
+function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop());updateUndo();toast('Wiederholt');}
 function updateUndo(){$('#undoBtn').disabled=!undoStack.length;$('#redoBtn').disabled=!redoStack.length;}
 
 /* ---------- Speichern ---------- */
@@ -1252,7 +1265,7 @@ function afterEdit(){scheduleSave();requestRender();drawTimeline();updateFrameIn
 function setFrame(f){const sc=scene();S.frame=clamp(f|0,0,sc.length-1);S.ft=S.frame;syncMedia(pool,sc,S.frame/sc.fps,false);ensureVisible();requestRender();drawTimeline();updateFrameInfo();if(S.tab==='obj')renderPanel();}
 function updateFrameInfo(){
   if(!S.project)return;const sc=scene();
-  $('#frameInfo').textContent=`Bild ${S.frame+1} / ${sc.length} · ${sc.fps} fps · ${fmtS(S.frame/sc.fps)}`;
+  $('#frameInfo').textContent=`Frame ${S.frame+1} / ${sc.length} · ${sc.fps} fps · ${fmtS(S.frame/sc.fps)}`;
   const o=selObj();const k=o&&o.keys.find(k=>k.f===S.frame);
   $('#keyBtn').disabled=!o;$('#delKeyBtn').disabled=!k;$('#keyBtn').classList.toggle('on',!!k);
 }
@@ -1269,7 +1282,7 @@ function shiftTime(sc,from,d){
   if(sc.cam&&sc.cam.keys.length){if(d<0&&sc.cam.keys.length>1)sc.cam.keys=sc.cam.keys.filter(k=>k.f!==from);sc.cam.keys.forEach(k=>{if(k.f>from)k.f+=d;});}
 }
 function setLength(sc,n){n=clamp(n|0,1,3000);while(sc.frames.length<n)sc.frames.push([]);sc.frames.length=n;sc.length=n;if(S.frame>=n){S.frame=n-1;S.ft=S.frame;}}
-function addFrame(copy){pushUndo();const sc=scene(),i=S.frame;sc.frames.splice(i+1,0,copy?sc.frames[i].slice():[]);sc.length++;shiftTime(sc,i,1);afterEdit();setFrame(i+1);toast(copy?'Bild kopiert':'Neues Bild eingefügt');}
+function addFrame(copy){pushUndo();const sc=scene(),i=S.frame;sc.frames.splice(i+1,0,copy?sc.frames[i].slice():[]);sc.length++;shiftTime(sc,i,1);afterEdit();setFrame(i+1);toast(copy?'Frame kopiert':'Neuer Frame eingefügt');}
 function delFrame(){const sc=scene(),i=S.frame;pushUndo();
   if(sc.length<=1){sc.frames[0]=[];}else{sc.frames.splice(i,1);sc.length--;shiftTime(sc,i,-1);}
   afterEdit();setFrame(Math.min(i,sc.length-1));}
@@ -1419,7 +1432,7 @@ tl.addEventListener('wheel',e=>{e.preventDefault();TL.sx=Math.max(0,TL.sx+(e.del
 
 /* ---------- Auswahl & Keyframe-Aktionen ---------- */
 function select(id,keepTab){if(id!==S.sel)S.pivotEdit=false;S.sel=id;if(id&&!keepTab&&S.tab!=='inv')S.tab='obj';if(id&&keepTab&&S.tab==='scene')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();}
-function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();keyAt(o,S.frame,true);afterEdit();renderPanel();toast('Keyframe auf Bild '+(S.frame+1));}
+function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();keyAt(o,S.frame,true);afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1));}
 function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){toast('Der letzte Keyframe bleibt, er hält die Position.');return;}
   pushUndo();o.keys=o.keys.filter(x=>x!==k);afterEdit();renderPanel();}
 
@@ -1428,7 +1441,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,keys:[{f:S.frame,x:W/2,y:H/2,s:1,r:0,o:1,e:'linear'}],...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[{f:S.frame,x:W/2,y:H/2,s:1,r:0,o:1,e:'linear'}],...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -1450,11 +1463,11 @@ async function insertAudioFile([f]){
   try{const id=await addAsset(f,'audio');const e=await assetUrl(id);const a=document.createElement('audio');a.preload='metadata';a.src=e.url;
     await new Promise(res=>{a.onloadedmetadata=res;a.onerror=res;setTimeout(res,6000);});
     pushUndo();const sc=scene();sc.audio.push({id:uid(),assetId:id,name:(f.name||'Ton').replace(/\.[^.]+$/,''),start:S.frame/sc.fps,volume:1,dur:isFinite(a.duration)?a.duration:2});
-    S.tab='scene';afterEdit();renderPanel();toast('Ton ab Bild '+(S.frame+1)+' eingefügt');
+    S.tab='scene';afterEdit();renderPanel();toast('Ton ab Frame '+(S.frame+1)+' eingefügt');
   }catch(err){toast('Diese Tondatei lässt sich nicht öffnen.');}
 }
 function frameToObject(){
-  const sc=scene(),arr=sc.frames[S.frame];if(!arr.length){toast('Auf diesem Bild ist noch nichts gezeichnet.');return;}
+  const sc=scene(),arr=sc.frames[S.frame];if(!arr.length){toast('Auf diesem Frame ist noch nichts gezeichnet.');return;}
   const b=strokesBBox(arr);if(!b)return;pushUndo();
   const o=newObj('drawing','Zeichnung '+(sc.objects.filter(o=>o.type==='drawing').length+1),b.w,b.h,{strokes:offsetStrokes(arr,-b.x,-b.y)});
   o.keys[0].x=b.x+b.w/2;o.keys[0].y=b.y+b.h/2;sc.frames[S.frame]=[];sc.objects.push(o);setTool('select');select(o.id);afterEdit();toast('Zeichnung ist jetzt ein Objekt. Verschieben setzt Keyframes.');
@@ -1474,7 +1487,7 @@ async function invFromObject(){
   await saveInv(item);S.tab='inv';S.invSel=item.id;S.invCat='Alle';renderPanel();toast('„'+o.name+'“ liegt jetzt im Inventar');
 }
 async function invFromFrame(){
-  const arr=scene().frames[S.frame];if(!arr.length){toast('Auf diesem Bild ist noch nichts gezeichnet.');return;}
+  const arr=scene().frames[S.frame];if(!arr.length){toast('Auf diesem Frame ist noch nichts gezeichnet.');return;}
   const b=strokesBBox(arr);const st=offsetStrokes(arr,-b.x,-b.y);
   const item={id:uid(),name:'Zeichnung',cat:'Eigene',kind:'drawing',strokes:st,w:b.w,h:b.h,created:Date.now(),thumb:makeThumb(x=>st.forEach(s=>drawStroke(x,s)),b.w,b.h)};
   await saveInv(item);S.invSel=item.id;S.invCat='Alle';renderPanel();toast('Bild als Inventar-Teil gespeichert');
@@ -1493,7 +1506,7 @@ function invInsert(item){
 }
 function invStamp(item){
   if(item.kind!=='drawing')return;pushUndo();const sc=scene();
-  const st=offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2));sc.frames[S.frame].push(...st);afterEdit();toast('In Bild '+(S.frame+1)+' gemalt');
+  const st=offsetStrokes(item.strokes,Math.round(W/2-item.w/2),Math.round(H/2-item.h/2));sc.frames[S.frame].push(...st);afterEdit();toast('In Frame '+(S.frame+1)+' gemalt');
 }
 
 /* ---------- Panel ---------- */
@@ -1506,7 +1519,7 @@ function renderPanel(){
 }
 function panelScene(){
   const sc=scene();
-  const list=S.project.scenes.map((s,i)=>`<button class="scene-item ${i===S.si?'on':''}" data-a="sceneGo" data-i="${i}"><canvas width="160" height="90" data-thumb="${i}"></canvas><span class="meta"><div class="nm">${esc(s.name)}</div><div class="st">${s.fps} fps · ${s.length} Bilder · ${fmtS(s.length/s.fps)}</div></span></button>`).join('');
+  const list=S.project.scenes.map((s,i)=>`<button class="scene-item ${i===S.si?'on':''}" data-a="sceneGo" data-i="${i}"><canvas width="160" height="90" data-thumb="${i}"></canvas><span class="meta"><div class="nm">${esc(s.name)}</div><div class="st">${s.fps} fps · ${s.length} Frames · ${fmtS(s.length/s.fps)}</div></span></button>`).join('');
   const fpsChips=[6,8,12,15,24,30].map(f=>`<button class="chip ${sc.fps===f?'on':''}" data-a="fps" data-v="${f}">${f}</button>`).join('');
   const bgs=['#ffffff','#f4efe4','#bfe3f7','#1b2142','#2b2b2b','#cfe8c4'].map(c=>`<button class="chip" data-a="bgc" data-v="${c}" style="width:30px;padding:0;background:${c}" aria-label="Hintergrund ${c}"></button>`).join('');
   const audio=sc.audio.map(a=>`<div class="audio-item"><div class="row"><span class="nm" style="flex:1">♪ ${esc(a.name)}</span><button class="btn sm danger" data-a="audioDel" data-id="${a.id}">${icon('trash')}</button></div>
@@ -1518,15 +1531,15 @@ function panelScene(){
     <button class="btn sm danger" data-a="sceneDel" ${S.project.scenes.length<2?'disabled':''}>${icon('trash')}</button></div></div>
   <div class="grp"><h3>Diese Szene</h3>
     <input id="sc-name" class="field" value="${esc(sc.name)}" data-sc="name" aria-label="Szenenname">
-    <div class="sub">Bilder pro Sekunde (Zeichnung)</div><div class="chips">${fpsChips}<input id="sc-fps" class="field num" type="number" min="1" max="60" value="${sc.fps}" data-sc="fps" aria-label="Eigene fps"></div>
-    <p class="hint">Gezeichnete Bilder wechseln mit ${sc.fps} fps. Bewegungen über Keyframes laufen flüssig mit der Bildwiederholrate des iPads (60 oder 120 fps).</p>
-    <div class="row"><label for="sc-len">Länge</label><input id="sc-len" class="field num" type="number" min="1" max="3000" value="${sc.length}" data-sc="length"><span class="val" style="text-align:left">Bilder = ${fmtS(sc.length/sc.fps)}</span></div>
+    <div class="sub">Frames pro Sekunde (Zeichnung)</div><div class="chips">${fpsChips}<input id="sc-fps" class="field num" type="number" min="1" max="60" value="${sc.fps}" data-sc="fps" aria-label="Eigene fps"></div>
+    <p class="hint">Gezeichnete Frames wechseln mit ${sc.fps} fps. Bewegungen über Keyframes laufen flüssig mit der Bildwiederholrate des iPads (60 oder 120 fps).</p>
+    <div class="row"><label for="sc-len">Länge</label><input id="sc-len" class="field num" type="number" min="1" max="3000" value="${sc.length}" data-sc="length"><span class="val" style="text-align:left">Frames = ${fmtS(sc.length/sc.fps)}</span></div>
   </div>
   <div class="grp"><div class="sub">Hintergrund</div>
     <div class="row"><input id="sc-bg" type="color" value="${esc(sc.bg)}" data-sc="bg" aria-label="Hintergrundfarbe"><div class="chips">${bgs}</div></div>
     <div class="btns"><button class="btn sm" data-a="bgImage">${icon('image')}${sc.bgAsset?'Bild ersetzen':'Bild als Hintergrund'}</button>${sc.bgAsset?`<button class="btn sm danger" data-a="bgClear">Bild entfernen</button>`:''}</div></div>
   ${panelCam(sc)}
-  <div class="grp"><div class="sub">Ton in dieser Szene</div>${audio||'<p class="hint">Noch kein Ton. Musik oder Sprache startet ab dem aktuellen Bild.</p>'}
+  <div class="grp"><div class="sub">Ton in dieser Szene</div>${audio||'<p class="hint">Noch kein Ton. Musik oder Sprache startet ab dem aktuellen Frame.</p>'}
     <div class="btns"><button class="btn sm" data-a="insAudio">${icon('audio')}Ton hinzufügen</button></div></div>`;
 }
 function panelCam(sc){
@@ -1534,7 +1547,7 @@ function panelCam(sc){
   const sl=(f,l,min,max,v,u)=>`<div class="row"><label for="cam-${f}">${l}</label><input id="cam-${f}" type="range" min="${min}" max="${max}" value="${Math.round(v)}" data-cam="${f}"><span class="val" id="camv-${f}">${Math.round(v)}${u}</span></div>`;
   return `<div class="grp" id="cam-grp"><div class="sub">Kamera</div>
     <div class="btns"><button class="btn sm ${S.camEdit?'on':''}" data-a="camEdit">${icon('film')}${S.camEdit?'Kamera bearbeiten: an':'Kamera bearbeiten'}</button></div>
-    <div class="key-state">${icon('key')}<span>${ks.length?(k?`Kamera-Keyframe auf Bild ${S.frame+1}`:`Bild ${S.frame+1}: berechnet`)+` · ${ks.length} Keyframe${ks.length===1?'':'s'}`:'Noch keine Kamera-Bewegung'}</span></div>
+    <div class="key-state">${icon('key')}<span>${ks.length?(k?`Kamera-Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: berechnet`)+` · ${ks.length} Keyframe${ks.length===1?'':'s'}`:'Noch keine Kamera-Bewegung'}</span></div>
     ${sl('z','Zoom',20,500,st.z*100,'%')}${sl('x','X',-500,W+500,st.x,'')}${sl('y','Y',-500,H+500,st.y,'')}${sl('r','Drehung',-180,180,st.r,'°')}${sl('sh','Wackeln',0,80,st.sh,'')}
     ${ks.length?`<div class="row"><label for="cam-e">Bewegung</label><select id="cam-e" class="field" data-cam="e">${Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('')}</select></div>`:''}
     <div class="btns"><button class="btn sm ${k?'on':''}" data-a="camKey">${icon('key')}Keyframe</button><button class="btn sm" data-a="camDelKey" ${k&&ks.length>1?'':'disabled'}>Key löschen</button><button class="btn sm danger" data-a="camReset" ${ks.length?'':'disabled'}>Zurücksetzen</button></div>
@@ -1544,34 +1557,36 @@ function slider(p,label,min,max,val,unit){return `<div class="row"><label for="t
 function panelObj(){
   const o=selObj();
   if(!o)return `<div class="grp"><h3>Kein Objekt ausgewählt</h3><p class="hint">Tippe mit dem Auswahl-Werkzeug auf ein Objekt. Im Modus „Nur Stift“ reicht ein Finger: Der Finger verschiebt, der Stift zeichnet.</p>
-    <div class="btns"><button class="btn sm" data-a="frameToObj">${icon('select')}Aktuelles Bild → Objekt</button><button class="btn sm" data-a="insImage">${icon('image')}Foto</button><button class="btn sm" data-a="insVideo">${icon('video')}Video</button><button class="btn sm" data-a="addMouth">Mund für Lippensync</button></div></div>
-    <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Bild 1 an den Startpunkt schieben. 3. In der Zeitleiste ein späteres Bild antippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
+    <div class="btns"><button class="btn sm" data-a="frameToObj">${icon('select')}Aktueller Frame → Objekt</button><button class="btn sm" data-a="insImage">${icon('image')}Foto</button><button class="btn sm" data-a="insVideo">${icon('video')}Video</button><button class="btn sm" data-a="addMouth">Mund für Lippensync</button></div></div>
+    <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Frame 1 an den Startpunkt schieben. 3. In der Zeitleiste einen späteren Frame antippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
   const sc=scene(),st=objState(o,S.frame),k=o.keys.find(k=>k.f===S.frame),kb=keyBefore(o,S.frame);
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
   return `<div class="grp"><input id="ob-name" class="field" value="${esc(o.name)}" data-ob="name" aria-label="Objektname">
-    <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Bild ${S.frame+1}`:`Bild ${S.frame+1}: berechnet`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
+    <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: berechnet`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
-    <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: Verschieben setzt einen Keyframe auf dem aktuellen Bild</label>
+    <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
+    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    <p class="hint">Nur eingeschaltete Dinge ändern sich von Keyframe zu Keyframe. Alles andere ist in jedem Frame gleich, egal auf welchem Frame du es änderst.</p>
+    <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: Verschieben setzt einen Keyframe auf dem aktuellen Frame</label>
     <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
   ${o.type==='mouth'?panelMouth(o):''}
-  <div class="grp"><div class="sub">Position auf Bild ${S.frame+1}</div>
+  <div class="grp"><div class="sub">Position auf Frame ${S.frame+1}</div>
     ${o.path?'':slider('x','X',-600,W+600,st.x,'')+slider('y','Y',-600,H+600,st.y,'')}${slider('s','Größe',2,400,st.s*100,'%')}${slider('r','Drehung',-360,360,st.r,'°')}${slider('o','Deckkraft',0,100,st.o*100,'%')}</div>
-  <div class="grp"><div class="sub">Farbe auf Bild ${S.frame+1}</div>
+  <div class="grp"><div class="sub">Farbe auf Frame ${S.frame+1}</div>
     <div class="row"><label for="tr-tc">Tönung</label><input id="tr-tc" type="color" value="${st.tc}" data-tr="tc"><div class="chips">${['#ff3b30','#ff9500','#ffd60a','#34c759','#0a84ff','#ffffff','#000000'].map(c=>`<button class="chip" data-a="tint" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Tönung ${c}"></button>`).join('')}</div></div>
     ${slider('ta','Stärke',0,100,st.ta*100,'%')}
-    <p class="hint">Setze auf zwei Bildern unterschiedliche Tönungen. Dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
+    <p class="hint">Schalte oben „Farbe“ ein und setze auf zwei Frames unterschiedliche Tönungen. Dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
   ${o.type==='shape'?`<div class="grp"><div class="sub">Form</div>
     ${o.closed?`<div class="row"><label class="check" style="min-width:110px"><input id="sh-fon" type="checkbox" data-sh="fillOn" ${o.fillOn?'checked':''}>Füllung</label><input id="sh-fill" type="color" value="${o.fill}" data-sh="fill" aria-label="Füllfarbe"></div>`:''}
     <div class="row"><label class="check" style="min-width:110px"><input id="sh-son" type="checkbox" data-sh="strokeOn" ${o.strokeOn?'checked':''}>Rand</label><input id="sh-stroke" type="color" value="${o.stroke}" data-sh="stroke" aria-label="Randfarbe"></div>
     <div class="row"><label for="sh-sw">Randdicke</label><input id="sh-sw" type="range" min="1" max="60" value="${o.sw}" data-sh="sw"><span class="val" id="sh-swv">${o.sw}px</span></div>
     <div class="btns"><button class="btn sm ${o.smooth?'on':''}" data-a="shSmooth">Weiche Kurven</button></div>
     <p class="hint">Ziehe die weißen Punkte, um die Form zu verändern. Fährst du mit Maus, Stift oder Finger an den Rand, erscheint dort ein +: Tippen macht genau da einen neuen Punkt. Zweimal schnell auf einen Punkt tippen entfernt ihn.</p>
-    <label class="check"><input id="sh-morph" type="checkbox" data-sh="morph" ${o.morph?'checked':''}>Verwandeln: Die Form ändert sich zwischen Keyframes</label>
-    ${o.morph?'<p class="hint">Geh auf ein anderes Bild und zieh die Punkte. Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt sie sich fließend.</p>':''}</div>`:''}
+    ${o.morph?'<p class="hint">„Form“ ist eingeschaltet: Geh auf einen anderen Frame und zieh die Punkte. Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt sie sich fließend.</p>':''}</div>`:''}
   ${panelJoint(o,sc)}
   ${panelPath(o,sc)}
   <div class="grp"><div class="sub">Sichtbar</div>
-    <div class="row"><label for="ob-in">ab Bild</label><input id="ob-in" class="field num" type="number" min="1" max="${sc.length}" value="${(o.inF||0)+1}" data-ob="inF"><label for="ob-out" style="min-width:0">bis</label><input id="ob-out" class="field num" type="number" min="1" max="${sc.length}" placeholder="Ende" value="${o.outF==null?'':o.outF+1}" data-ob="outF"></div>
+    <div class="row"><label for="ob-in">ab Frame</label><input id="ob-in" class="field num" type="number" min="1" max="${sc.length}" value="${(o.inF||0)+1}" data-ob="inF"><label for="ob-out" style="min-width:0">bis</label><input id="ob-out" class="field num" type="number" min="1" max="${sc.length}" placeholder="Ende" value="${o.outF==null?'':o.outF+1}" data-ob="outF"></div>
     <div class="btns"><button class="btn sm" data-a="visFrom">Ab hier</button><button class="btn sm" data-a="visTo">Bis hier</button><button class="btn sm" data-a="visAll">Immer</button></div></div>
   <div class="grp"><div class="sub">Ebene</div>
     <div class="btns"><button class="btn sm" data-a="objFront">Nach vorne</button><button class="btn sm" data-a="objBack">Nach hinten</button><button class="btn sm ${o.flip?'on':''}" data-a="objFlip">Spiegeln</button></div>
@@ -1592,7 +1607,7 @@ function panelPath(o,sc){
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${P&&P.e===v?'selected':''}>${n}</option>`).join('');
   return `<div class="grp"><div class="sub">Bewegungspfad</div>
     ${drawing?`<p class="hint"><strong>Zeichne jetzt den Weg auf der Bühne.</strong> Das Objekt fliegt später genau daran entlang.</p><div class="btns"><button class="btn sm" data-a="pathCancel">Abbrechen</button></div>`:
-    P?`<div class="row"><label for="pa-f0">von Bild</label><input id="pa-f0" class="field num" type="number" min="1" max="${sc.length}" value="${P.f0+1}" data-pa="f0"><label for="pa-f1" style="min-width:0">bis</label><input id="pa-f1" class="field num" type="number" min="1" max="${sc.length}" value="${P.f1+1}" data-pa="f1"></div>
+    P?`<div class="row"><label for="pa-f0">von Frame</label><input id="pa-f0" class="field num" type="number" min="1" max="${sc.length}" value="${P.f0+1}" data-pa="f0"><label for="pa-f1" style="min-width:0">bis</label><input id="pa-f1" class="field num" type="number" min="1" max="${sc.length}" value="${P.f1+1}" data-pa="f1"></div>
       <div class="btns"><button class="btn sm" data-a="pathFrom">Start hier</button><button class="btn sm" data-a="pathTo">Ende hier</button></div>
       <div class="row"><label for="pa-e">Tempo</label><select id="pa-e" class="field" data-pa="e">${ease}</select></div>
       <label class="check"><input id="pa-or" type="checkbox" data-pa="orient" ${P.orient?'checked':''}>In Flugrichtung drehen</label>
@@ -1605,7 +1620,7 @@ function panelMouth(o){
   const cur=mouthVis(o,S.frame),V=o.visemes||{};let curV='R';for(const q of o.cues||[]){if(q.f<=S.frame)curV=q.v;else break;}
   return `<div class="grp"><div class="sub">Lippensync</div>
     <div class="vis-grid">${VISEMES.map(([v,n])=>`<button class="vis ${curV===v?'on':''}" data-a="cue" data-v="${v}">${V[v]&&V[v].thumb?`<img src="${V[v].thumb}" alt="">`:'<span class="ph">?</span>'}<b>${n}</b></button>`).join('')}</div>
-    <p class="hint">Tippe einen Mund an: Ab Bild ${S.frame+1} wird er gezeigt. Am schnellsten geht es beim Abspielen: Szene starten und im Takt der Sprache auf die Münder tippen.</p>
+    <p class="hint">Tippe einen Mund an: Ab Frame ${S.frame+1} wird er gezeigt. Am schnellsten geht es beim Abspielen: Szene starten und im Takt der Sprache auf die Münder tippen.</p>
     <div class="btns"><button class="btn sm" data-a="cueAuto">Automatisch aus Ton</button><button class="btn sm" data-a="cueDel">Wechsel hier löschen</button><button class="btn sm danger" data-a="cueClear" ${(o.cues||[]).length?'':'disabled'}>Alle löschen</button></div>
     <details><summary class="sub" style="cursor:pointer">Münder zuordnen</summary><div class="grp" style="margin-top:8px">
       ${VISEMES.map(([v,n])=>`<div class="row"><label for="vis-${v}">${n}</label><select id="vis-${v}" class="field" data-vis="${v}"><option value="">–</option>${items.map(i=>`<option value="${i.id}" ${V[v]&&V[v].name===i.name?'selected':''}>${esc(i.name)}</option>`).join('')}</select></div>`).join('')}
@@ -1618,10 +1633,10 @@ function panelInv(){
   const sel=inventory.find(i=>i.id===S.invSel);
   return `<div class="grp"><h3>Inventar</h3><p class="hint">Das Inventar ist in jedem Projekt gleich. Lege Münder, Augen oder Figuren einmal an und kopiere sie in jede Szene.</p>
     <div class="btns"><button class="btn sm" data-a="invDraw">${icon('pen')}Neu zeichnen</button><button class="btn sm" data-a="invPhoto">${icon('image')}Foto</button>
-    <button class="btn sm" data-a="objToInv" ${selObj()?'':'disabled'}>Auswahl speichern</button><button class="btn sm" data-a="invFrame">Bild speichern</button></div></div>
+    <button class="btn sm" data-a="objToInv" ${selObj()?'':'disabled'}>Auswahl speichern</button><button class="btn sm" data-a="invFrame">Frame speichern</button></div></div>
   <div class="chips">${cats.map(c=>`<button class="chip ${c===S.invCat?'on':''}" data-a="invCat" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
   ${sel?`<div class="inv-actions"><div class="row"><strong style="flex:1">${esc(sel.name)}</strong></div>
-    <div class="btns"><button class="btn sm primary" data-a="invInsert">Als Objekt einfügen</button>${sel.kind==='drawing'?`<button class="btn sm" data-a="invStamp">In Bild malen</button><button class="btn sm" data-a="invEdit">Bearbeiten</button>`:''}</div>
+    <div class="btns"><button class="btn sm primary" data-a="invInsert">Als Objekt einfügen</button>${sel.kind==='drawing'?`<button class="btn sm" data-a="invStamp">In Frame malen</button><button class="btn sm" data-a="invEdit">Bearbeiten</button>`:''}</div>
     <div class="row"><label for="inv-name">Name</label><input id="inv-name" class="field" value="${esc(sel.name)}" data-inv="name"></div>
     <div class="row"><label for="inv-cat">Gruppe</label><input id="inv-cat" class="field" value="${esc(sel.cat||'')}" data-inv="cat" list="inv-cats"><datalist id="inv-cats">${cats.slice(1).map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
     <div class="btns"><button class="btn sm danger" data-a="invDel">${icon('trash')}Aus Inventar löschen</button></div></div>`:''}
@@ -1630,7 +1645,7 @@ function panelInv(){
 PB.addEventListener('input',e=>{
   const t=e.target;
   if(t.dataset.tr){const o=selObj();if(!o)return;const p=t.dataset.tr;
-    if(!PB._edit){pushUndo();PB._edit=beginEdit(o,S.frame);}
+    if(!PB._edit){pushUndo();PB._edit=beginEdit(o,S.frame,[propGroup(p)]);}
     const vals={};
     if(p==='tc'){vals.tc=t.value;if(PB._edit.base.ta<0.004&&!PB._edit.tintBumped){vals.ta=0.5;PB._edit.tintBumped=true;}}
     else{const v=+t.value;vals[p]=(p==='s'||p==='o'||p==='ta')?v/100:v;const u={s:'%',o:'%',ta:'%',r:'°'}[p]||'';$('#trv-'+p).textContent=Math.round(v)+u;}
@@ -1695,8 +1710,8 @@ const A={
   brush:toggleBrushPop,
   shapeKind:el=>{S.shapeKind=el.dataset.v;LS.set('shapeKind',S.shapeKind);renderShapePop();updateModeUI();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
-  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Bild 1 gibt es kein Bild.');return;}const prev=sc.frames[S.frame-1];
-    if(!prev.length){toast('Bild '+S.frame+' ist leer.');return;}pushUndo();sc.frames[S.frame]=sc.frames[S.frame].concat(prev);afterEdit();toast('Bild '+S.frame+' auf Bild '+(S.frame+1)+' kopiert');},
+  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}const prev=sc.frames[S.frame-1];
+    if(!prev.length){toast('Frame '+S.frame+' ist leer.');return;}pushUndo();sc.frames[S.frame]=sc.frames[S.frame].concat(prev);afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
   color:el=>setColor(el.dataset.v),
   tab:el=>{S.tab=el.dataset.v;renderPanel();if(innerWidth<=1100)$('#app').classList.add('showpanel');},
   sceneGo:el=>switchScene(+el.dataset.i),
@@ -1717,9 +1732,15 @@ const A={
   visTo:()=>{const o=selObj();if(!o)return;pushUndo();o.outF=Math.max(S.frame,o.inF||0);afterEdit();renderPanel();},
   visAll:()=>{const o=selObj();if(!o)return;pushUndo();o.inF=0;o.outF=null;afterEdit();renderPanel();},
   objFront:()=>moveZ(1),objBack:()=>moveZ(-1),
-  tint:el=>{const o=selObj();if(!o)return;pushUndo();const E=beginEdit(o,S.frame);const vals={tc:el.dataset.v};if(E.base.ta<0.004)vals.ta=0.5;applyVals(E,vals);afterEdit();renderPanel();},
+  tint:el=>{const o=selObj();if(!o)return;pushUndo();const E=beginEdit(o,S.frame,['tint']);const vals={tc:el.dataset.v};if(E.base.ta<0.004)vals.ta=0.5;applyVals(E,vals);afterEdit();renderPanel();},
   objFlip:()=>{const o=selObj();if(!o)return;pushUndo();o.flip=!o.flip;afterEdit();renderPanel();},
   objToInv:()=>{const o=selObj();if(o&&o.type==='mouth'){toast('Lippensync-Münder bleiben im Projekt. Die einzelnen Münder liegen schon im Inventar.');return;}invFromObject();},
+  animTog:el=>{const o=selObj();if(!o)return;const g=el.dataset.v;pushUndo();let on;
+    if(g==='form'){on=!o.morph;if(on)o.morph=true;else{const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}shapeDims(o);}
+    else{const F={...animFlags(o)};on=!F[g];
+      if(!on){const st=objState(o,S.frame);const keys={pos:['x','y'],s:['s'],r:['r'],o:['o'],tint:['tc','ta']}[g];o.keys.forEach(k=>keys.forEach(f=>{k[f]=st[f];}));}
+      F[g]=on;o.anim=F;}
+    afterEdit();renderPanel();const name=g==='form'?'Form':ANIM.find(a=>a[0]===g)[1];toast(on?name+' ändert sich jetzt zwischen Keyframes':name+' bleibt jetzt in jedem Frame gleich');},
   pivotEdit:()=>{S.pivotEdit=!S.pivotEdit;if(S.pivotEdit&&S.tool!=='select')setTool('select');updateModeUI();renderPanel();requestRender();if(S.pivotEdit)toast('Zieh den roten Drehpunkt an die Stelle des Gelenks.');},
   pivotAt:el=>{const o=selObj();if(!o)return;pushUndo();const v=el.dataset.v,p={c:{x:0,y:0},t:{x:0,y:-o.h/2},b:{x:0,y:o.h/2},l:{x:-o.w/2,y:0},r:{x:o.w/2,y:0}}[v];setPivot(o,p);afterEdit();renderPanel();},
   pathDraw:()=>{const o=selObj();if(!o)return;S.pathFor=o.id;S.camEdit=false;updateModeUI();renderPanel();requestRender();toast('Zeichne jetzt den Weg auf der Bühne.');},
@@ -1735,7 +1756,7 @@ const A={
   cueClear:()=>{const o=selObj();if(!o)return;pushUndo();o.cues=[];afterEdit();renderPanel();},
   cueAuto:()=>{const o=selObj();if(o&&o.type==='mouth')autoCues(o);},
   camEdit:()=>{S.camEdit=!S.camEdit;S.pathFor=null;if(S.camEdit){S.tab='scene';renderPanel();}else renderPanel();updateModeUI();requestRender();},
-  camKey:()=>{const sc=scene();pushUndo();camKeyAt(sc,S.frame,true);afterEdit();renderPanel();toast('Kamera-Keyframe auf Bild '+(S.frame+1));},
+  camKey:()=>{const sc=scene();pushUndo();camKeyAt(sc,S.frame,true);afterEdit();renderPanel();toast('Kamera-Keyframe auf Frame '+(S.frame+1));},
   camDelKey:()=>{const sc=scene();if(!sc.cam||sc.cam.keys.length<2)return;pushUndo();sc.cam.keys=sc.cam.keys.filter(k=>k.f!==S.frame);afterEdit();renderPanel();},
   camReset:()=>{const sc=scene();pushUndo();sc.cam=null;afterEdit();renderPanel();toast('Kamera zurückgesetzt');},
   objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});addObject(c);},
@@ -1859,7 +1880,7 @@ home.addEventListener('click',async e=>{
 function newProjectDlg(){
   const d=openModal(`<h2>Neues Projekt</h2>
     <div class="grp"><label class="sub" for="np-name">Name</label><input id="np-name" class="field" placeholder="z. B. Mein erster Trickfilm"></div>
-    <div class="grp"><div class="sub">Bilder pro Sekunde für die erste Szene</div><div class="chips">${[6,8,12,15,24].map(f=>`<button class="chip ${f===12?'on':''}" data-np="${f}">${f}</button>`).join('')}</div>
+    <div class="grp"><div class="sub">Frames pro Sekunde für die erste Szene</div><div class="chips">${[6,8,12,15,24].map(f=>`<button class="chip ${f===12?'on':''}" data-np="${f}">${f}</button>`).join('')}</div>
     <p class="hint">12 fps ist typisch für Zeichentrick. Jede Szene kann später andere fps bekommen.</p></div>
     <div class="foot"><button class="btn" id="np-no">Abbrechen</button><button class="btn primary" id="np-go">${icon('plus')}Erstellen</button></div>`);
   let fps=12;
@@ -1927,7 +1948,7 @@ function openExport(){
     <div class="grp"><div class="sub">Umfang</div><div class="chips"><button class="chip on" data-x="range" data-v="film">Ganzer Film · ${fmtS(total)}</button><button class="chip" data-x="range" data-v="scene">Nur „${esc(scene().name)}“ · ${fmtS(scene().length/scene().fps)}</button></div></div>
     <div class="grp"><div class="sub">Größe</div><div class="chips"><button class="chip on" data-x="res" data-v="1280">1280 × 720</button><button class="chip" data-x="res" data-v="1920">1920 × 1080</button></div></div>
     <div class="grp"><div class="sub">Bewegung</div><div class="chips"><button class="chip" data-x="fps" data-v="30">30 fps</button><button class="chip on" data-x="fps" data-v="60">60 fps</button></div>
-    <p class="hint">Die gezeichneten Bilder behalten die fps jeder Szene. Keyframe-Bewegungen werden mit 30 oder 60 fps aufgenommen. Der Film läuft dabei einmal in Echtzeit durch.</p></div>
+    <p class="hint">Die gezeichneten Frames behalten die fps jeder Szene. Keyframe-Bewegungen werden mit 30 oder 60 fps aufgenommen. Der Film läuft dabei einmal in Echtzeit durch.</p></div>
     <div class="progress" hidden><div></div></div><div id="ex-out" class="grp"></div>
     <div class="foot"><button class="btn" id="ex-cancel">Schließen</button><button class="btn primary" id="ex-go">${icon('film')}Aufnahme starten</button></div>`);
   const opt={range:'film',res:1280,fps:60};
@@ -2079,7 +2100,7 @@ document.addEventListener('keydown',e=>{
 /* ---------- Start ---------- */
 async function init(){
   document.querySelectorAll('[data-ic]').forEach(b=>b.insertAdjacentHTML('afterbegin',icon(b.dataset.ic)));
-  $('#undoBtn').innerHTML=icon('undo');$('#redoBtn').innerHTML=icon('redo');updatePlayBtn();
+  $('#undoBtn').innerHTML=icon('undo')+'<span class="lbl-t">Rückgängig</span>';$('#redoBtn').innerHTML=icon('redo')+'<span class="lbl-t">Wiederholen</span>';updatePlayBtn();
   if(innerWidth<=1100)$('#app').classList.remove('nopanel');
   readTokens();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readTokens);
