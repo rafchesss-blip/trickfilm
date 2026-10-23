@@ -97,6 +97,8 @@ select.sel{height:38px;border:1px solid var(--line);background:var(--raised);bor
 #stageWrap.draw #stage{cursor:crosshair}
 .stage-hud{position:absolute;right:10px;bottom:10px;display:flex;gap:6px}
 .hud{height:30px;padding:0 10px;border-radius:15px;border:0;background:color-mix(in srgb,var(--raised) 88%,transparent);color:var(--fg);font:500 12px var(--f-mono);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.sel-hud{position:absolute;right:10px;top:10px;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 12px;border-radius:12px;background:color-mix(in srgb,var(--raised) 92%,transparent);box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:calc(100% - 20px)}
+.sel-hud span{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:16ch}
 .mode-pill{position:absolute;left:10px;top:10px;padding:5px 10px;border-radius:14px;background:color-mix(in srgb,var(--raised) 88%,transparent);font-size:12px;font-weight:600;color:var(--muted);pointer-events:none}
 .mode-pill b{color:var(--accent)}
 
@@ -222,6 +224,7 @@ details summary{list-style:none}
 .lay-name .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lay-name .st{font:500 11px var(--f-mono);color:var(--muted)}
 .tab{font-size:12.5px}
+.sp-dot{width:30px;height:30px;border-radius:50%;border:2px solid var(--raised);box-shadow:0 0 0 1px var(--line);flex:none}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:22px;font-weight:600;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:1100px){
@@ -264,6 +267,7 @@ details summary{list-style:none}
   <div id="stageWrap">
     <canvas id="stage"></canvas>
     <div class="mode-pill" id="modePill"></div>
+    <div class="sel-hud" id="selHud" hidden><span id="selName"></span><button class="btn sm" data-a="objDup" data-ic="copy">Kopieren</button><button class="btn sm danger" data-a="objDel" data-ic="trash">Löschen</button></div>
     <div class="stage-hud"><button class="hud" data-a="camEdit" id="camHud">Kamera</button><button class="hud" data-a="fit" id="zoomHud">100 %</button></div>
   </div>
 
@@ -391,7 +395,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 /* ---------- State ---------- */
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
   stylusOnly:LS.get('stylusOnly',false),autoKey:LS.get('autoKey',true),onion:LS.get('onion',true),loop:LS.get('loop',true),
-  sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
+  sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
 const selObj=()=>S.sel?scene().objects.find(o=>o.id===S.sel)||null:null;
@@ -1016,7 +1020,7 @@ function makeShape(kind,a,b,free){
   }
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
-    fill:S.color,fillOn:!line&&S.shapeFill,stroke:line||!S.shapeFill?S.color:'#1b1f2a',strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):clamp(S.size,3,30),
+    fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
     w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[{f:S.frame,x:cx,y:cy,s:1,r:0,o:1,e:'linear'}]};
   shapeDims(o);return o;
 }
@@ -1106,14 +1110,22 @@ function drawShapePreview(sc,fi){
     if(G.kind==='free'){sctx.closePath();sctx.globalAlpha=.18;sctx.fillStyle=S.color;sctx.fill();sctx.globalAlpha=1;}
     sctx.stroke();sctx.restore();}
 }
+const RAND_PAL=['#1b1f2a','#ffffff','#7d8590','#e5484d','#f76b15','#ffc53d','#46a758','#12a594','#0090ff','#3e63dd','#8e4ec6','#d6409f'];
 function renderShapePop(){
   const p=$('#brushPop');
   p.innerHTML=`<div class="shape-grid">${SHAPES.map(([k,n])=>`<button class="shape-opt ${S.shapeKind===k?'on':''}" data-a="shapeKind" data-v="${k}">${icon('sh_'+k)}<span>${n}</span></button>`).join('')}</div>
-   <label class="check"><input type="checkbox" id="sp-fill" ${S.shapeFill?'checked':''}>Mit der aktuellen Farbe füllen</label>
-   <label class="check"><input type="checkbox" id="sp-stroke" ${S.shapeStroke?'checked':''}>Rand</label>
+   <div class="row"><label class="check" style="min-width:0;flex:1"><input type="checkbox" id="sp-fill" ${S.shapeFill?'checked':''}>Füllen mit Stiftfarbe</label><span class="sp-dot" style="background:${S.color}" title="Aktuelle Stiftfarbe"></span></div>
+   <div class="row"><label class="check" style="min-width:0;flex:1"><input type="checkbox" id="sp-stroke" ${S.shapeStroke?'checked':''}>Rand in eigener Farbe</label><input id="sp-sc" type="color" value="${S.shapeStrokeColor}" aria-label="Randfarbe"></div>
+   <div class="pal">${RAND_PAL.map(c=>`<button data-a="spSc" data-v="${c}" class="${c===S.shapeStrokeColor?'on':''}" style="background:${c}" aria-label="Randfarbe ${c}"></button>`).join('')}</div>
+   <div class="row"><label for="sp-sw">Randdicke</label><input id="sp-sw" type="range" min="1" max="40" value="${S.shapeSW}"><span class="val" id="sp-swv">${S.shapeSW}px</span></div>
    <p class="hint">${S.shapeKind==='free'?'Zeichne einmal ringsum. Daraus wird eine weiche Form mit Punkten zum Ziehen.':'Auf der Bühne aufziehen. Danach die weißen Punkte ziehen. Am Rand erscheint ein +, dort entsteht ein neuer Punkt.'}</p>`;
   $('#sp-fill').onchange=e=>{S.shapeFill=e.target.checked;LS.set('shapeFill',S.shapeFill);};
   $('#sp-stroke').onchange=e=>{S.shapeStroke=e.target.checked;LS.set('shapeStroke',S.shapeStroke);};
+  // Farbfeld nicht neu bauen, sonst schließt das iPad den Farbwähler
+  const sc=$('#sp-sc'),setSc=c=>{S.shapeStrokeColor=c;LS.set('shapeStrokeColor',c);if(!S.shapeStroke){S.shapeStroke=true;LS.set('shapeStroke',true);$('#sp-stroke').checked=true;}
+    $('#brushPop').querySelectorAll('[data-a=spSc]').forEach(b=>b.classList.toggle('on',b.dataset.v===c));};
+  sc.addEventListener('input',e=>setSc(e.target.value));sc.addEventListener('change',e=>setSc(e.target.value));
+  $('#sp-sw').addEventListener('input',e=>{S.shapeSW=+e.target.value;LS.set('shapeSW',S.shapeSW);$('#sp-swv').textContent=S.shapeSW+'px';});
 }
 function openShapePop(){const p=$('#brushPop');renderShapePop();const btn=document.querySelector('.tool[data-v="shape"]');const r=btn.getBoundingClientRect();
   p.hidden=false;p.style.left=Math.min(r.right+10,innerWidth-280)+'px';p.style.top=clamp(r.top-40,8,innerHeight-p.offsetHeight-8)+'px';}
@@ -1368,7 +1380,7 @@ function startPlayback(film){
   if(film){S.si=0;refreshScenes();}
   const sc=scene();
   let start=film?0:S.frame/sc.fps;if(!film&&S.frame>=sc.length-1)start=0;
-  S.playing=true;play={film,t0:performance.now(),start};pool.pauseAll();updatePlayBtn();
+  S.playing=true;$('#selHud').hidden=true;play={film,t0:performance.now(),start};pool.pauseAll();updatePlayBtn();
   requestAnimationFrame(tick);
 }
 function tick(now){
@@ -1385,7 +1397,7 @@ function tick(now){
   syncMedia(pool,sc,t,true);render();ensureVisible();drawTimeline();updateFrameInfo();
   requestAnimationFrame(tick);
 }
-function stopPlayback(){S.playing=false;pool.pauseAll();S.ft=S.frame;updatePlayBtn();requestRender();drawTimeline();}
+function stopPlayback(){S.playing=false;setTimeout(updateSelHud);pool.pauseAll();S.ft=S.frame;updatePlayBtn();requestRender();drawTimeline();}
 function updatePlayBtn(){$('#playBtn').innerHTML=icon(S.playing?'pause':'play');}
 
 /* ---------- Zeitleiste ---------- */
@@ -1585,7 +1597,8 @@ function invStamp(item){
 
 /* ---------- Panel ---------- */
 const PB=$('#panelBody');
-function renderPanel(){
+function updateSelHud(){const o=S.project&&selObj(),h=$('#selHud');h.hidden=!o||S.playing;if(o)$('#selName').textContent=o.name;}
+function renderPanel(){updateSelHud();
   if(!S.project)return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===S.tab));
   if(S.tab==='scene')PB.innerHTML=panelScene();else if(S.tab==='obj')PB.innerHTML=panelObj();else if(S.tab==='layers')PB.innerHTML=panelLayers();else PB.innerHTML=panelInv();
@@ -1635,7 +1648,7 @@ function panelObj(){
     <div class="grp"><div class="sub">So funktionieren Keyframes</div><p class="hint">1. Objekt auswählen. 2. Auf Frame 1 an den Startpunkt schieben. 3. In der Zeitleiste einen späteren Frame antippen und das Objekt an den Zielpunkt schieben. Die Bewegung dazwischen wird automatisch berechnet.</p></div>`;
   const sc=scene(),st=objState(o,S.frame),k=o.keys.find(k=>k.f===S.frame),kb=keyBefore(o,S.frame);
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
-  return `<div class="grp"><input id="ob-name" class="field" value="${esc(o.name)}" data-ob="name" aria-label="Objektname">
+  return `<div class="grp"><div class="row"><input id="ob-name" class="field" style="flex:1" value="${esc(o.name)}" data-ob="name" aria-label="Objektname"><button class="btn danger" data-a="objDel" title="Objekt löschen" aria-label="Objekt löschen">${icon('trash')}Löschen</button></div>
     <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: berechnet`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
@@ -1651,8 +1664,10 @@ function panelObj(){
     ${slider('ta','Stärke',0,100,st.ta*100,'%')}
     <p class="hint">Schalte oben „Farbe“ ein und setze auf zwei Frames unterschiedliche Tönungen. Dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
   ${o.type==='shape'?`<div class="grp"><div class="sub">Form</div>
-    ${o.closed?`<div class="row"><label class="check" style="min-width:110px"><input id="sh-fon" type="checkbox" data-sh="fillOn" ${o.fillOn?'checked':''}>Füllung</label><input id="sh-fill" type="color" value="${o.fill}" data-sh="fill" aria-label="Füllfarbe"></div>`:''}
+    ${o.closed?`<div class="row"><label class="check" style="min-width:110px"><input id="sh-fon" type="checkbox" data-sh="fillOn" ${o.fillOn?'checked':''}>Füllung</label><input id="sh-fill" type="color" value="${o.fill}" data-sh="fill" aria-label="Füllfarbe"></div>
+    <div class="chips">${RAND_PAL.map(c=>`<button class="chip" data-a="shCol" data-k="fill" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Füllfarbe ${c}"></button>`).join('')}</div>`:''}
     <div class="row"><label class="check" style="min-width:110px"><input id="sh-son" type="checkbox" data-sh="strokeOn" ${o.strokeOn?'checked':''}>Rand</label><input id="sh-stroke" type="color" value="${o.stroke}" data-sh="stroke" aria-label="Randfarbe"></div>
+    <div class="chips">${RAND_PAL.map(c=>`<button class="chip" data-a="shCol" data-k="stroke" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Randfarbe ${c}"></button>`).join('')}</div>
     <div class="row"><label for="sh-sw">Randdicke</label><input id="sh-sw" type="range" min="1" max="60" value="${o.sw}" data-sh="sw"><span class="val" id="sh-swv">${o.sw}px</span></div>
     <div class="btns"><button class="btn sm ${o.smooth?'on':''}" data-a="shSmooth">Weiche Kurven</button></div>
     <p class="hint">Ziehe die weißen Punkte, um die Form zu verändern. Fährst du mit Maus, Stift oder Finger an den Rand, erscheint dort ein +: Tippen macht genau da einen neuen Punkt. Zweimal schnell auf einen Punkt tippen entfernt ihn.</p>
@@ -1803,6 +1818,8 @@ const A={
   tool:el=>{const v=el.dataset.v;const again=S.tool===v;setTool(v);if(v==='shape'){if(again&&!$('#brushPop').hidden)closeBrushPop();else openShapePop();}else closeBrushPop();},
   brush:toggleBrushPop,
   shapeKind:el=>{S.shapeKind=el.dataset.v;LS.set('shapeKind',S.shapeKind);renderShapePop();updateModeUI();},
+  spSc:el=>{const c=el.dataset.v;S.shapeStrokeColor=c;LS.set('shapeStrokeColor',c);S.shapeStroke=true;LS.set('shapeStroke',true);renderShapePop();},
+  shCol:el=>{const o=selObj();if(!o||o.type!=='shape')return;const k=el.dataset.k;pushUndo();o[k]=el.dataset.v;o[k+'On']=true;shapeDims(o);afterEdit();renderPanel();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
   prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}if(layerBlocked())return;const fr=curFrames(sc),prev=fr[S.frame-1];
     if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(prev);afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
@@ -1866,7 +1883,7 @@ const A={
   camDelKey:()=>{const sc=scene();if(!sc.cam||sc.cam.keys.length<2)return;pushUndo();sc.cam.keys=sc.cam.keys.filter(k=>k.f!==S.frame);afterEdit();renderPanel();},
   camReset:()=>{const sc=scene();pushUndo();sc.cam=null;afterEdit();renderPanel();toast('Kamera zurückgesetzt');},
   objDup:()=>{const o=selObj();if(!o)return;const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});addObject(c);},
-  objDel:()=>{const o=selObj();if(!o)return;pushUndo();const sc=scene();sc.objects.filter(c=>c.parent===o.id).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>x!==o);S.sel=null;afterEdit();renderPanel();toast('Objekt gelöscht');},
+  objDel:()=>{const o=selObj();if(!o)return;pushUndo();const sc=scene();sc.objects.filter(c=>c.parent===o.id).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>x!==o);S.sel=null;afterEdit();renderPanel();toast('„'+o.name+'“ gelöscht. Rückgängig holt es zurück.');},
   invDraw:()=>openEditor(null),invPhoto:()=>pick('image/*',invFromPhoto,true),invFrame:invFromFrame,
   invCat:el=>{S.invCat=el.dataset.v;renderPanel();},
   invSel:el=>{S.invSel=S.invSel===el.dataset.id?null:el.dataset.id;renderPanel();},
