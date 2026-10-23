@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="23.10.2026 16:31">
+<meta name="tfs-version" content="23.10.2026 16:38">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -395,7 +395,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 
 /* ---------- State ---------- */
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
-  stylusOnly:LS.get('stylusOnly',false),actFront:LS.get('actFront',true),autoKey:LS.get('autoKey2',false),onion:LS.get('onion',true),loop:LS.get('loop',true),
+  stylusOnly:LS.get('stylusOnly',false),actFront:LS.get('actFront2',false),autoKey:LS.get('autoKey2',false),onion:LS.get('onion',true),loop:LS.get('loop',true),
   sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
@@ -408,6 +408,11 @@ function newScene(name,fps=12,len=24){return{id:uid(),name,fps,length:len,bg:'#f
 function layersOf(sc){if(!sc.layers){sc.layers=[{id:'L'+uid(),name:'Ebene 1',visible:true,op:1,locked:false,frames:sc.frames||Array.from({length:sc.length},()=>[])}];delete sc.frames;}return sc.layers;}
 function actLayer(sc=scene()){const ls=layersOf(sc);let l=ls.find(x=>x.id===S.layerId);if(!l){l=ls[ls.length-1];S.layerId=l.id;}return l;}
 const curFrames=(sc=scene())=>actLayer(sc).frames;
+// Ebene eines Objekts. Ältere Objekte ohne Ebene: „hinter der Zeichnung“ = unterste Ebene, sonst oberste (wie früher)
+function objLayer(sc,o){const ls=layersOf(sc);return ls.find(l=>l.id===o.layer)||(o.behind?ls[0]:ls[ls.length-1]);}
+// Alle Objekte in Zeichen-Reihenfolge (hinten zuerst)
+function objectsInOrder(sc){const out=[];for(const l of layersOf(sc)){const mine=sc.objects.filter(o=>objLayer(sc,o)===l);
+  out.push(...mine.filter(o=>o.behind),...mine.filter(o=>!o.behind));}return out;}
 function layerBlocked(){const l=actLayer();if(l.locked){toast('„'+l.name+'“ ist gesperrt. Entsperre sie im Panel „Ebenen“.');return true;}if(!l.visible){toast('„'+l.name+'“ ist ausgeblendet. Blende sie zuerst ein.');return true;}return false;}
 
 /* ---------- Assets & Medien ---------- */
@@ -754,7 +759,7 @@ function drawObj(ctx,o,sc,ft,fi,opt,memo){
   else if(o.type==='mouth'){const v=mouthVis(o,fi);if(v){dw=v.w;dh=v.h;src=v.kind==='image'?getImage(v.assetId):strokesCanvas(v.strokes,v.w,v.h);}}
   else if(o.type==='shape'){
     const pts=st.pts||o.pts;
-    if(st.ta<=0.004){ctx.save();ctx.transform(M[0],M[1],M[2],M[3],M[4],M[5]);ctx.globalAlpha=clamp(st.o,0,1);paintShape(ctx,o,pts);ctx.restore();return;}
+    if(st.ta<=0.004){ctx.save();ctx.transform(M[0],M[1],M[2],M[3],M[4],M[5]);ctx.globalAlpha=clamp(st.o,0,1)*(opt.lop??1);paintShape(ctx,o,pts);ctx.restore();return;}
     src=shapeCanvas(o,pts);
   }
   if(src&&st.ta>0.004){
@@ -765,7 +770,7 @@ function drawObj(ctx,o,sc,ft,fi,opt,memo){
     tx.globalCompositeOperation='source-atop';tx.globalAlpha=clamp(st.ta,0,1);tx.fillStyle=st.tc;tx.fillRect(0,0,tw,th);
     tx.globalCompositeOperation='source-over';tx.globalAlpha=1;src=tintC;
   }
-  ctx.save();ctx.transform(M[0],M[1],M[2],M[3],M[4],M[5]);ctx.globalAlpha=clamp(st.o,0,1);
+  ctx.save();ctx.transform(M[0],M[1],M[2],M[3],M[4],M[5]);ctx.globalAlpha=clamp(st.o,0,1)*(opt.lop??1);
   if(src)ctx.drawImage(src,-dw/2,-dh/2,dw,dh);
   else if(opt.ui){ctx.fillStyle='rgba(120,140,160,.25)';ctx.fillRect(-dw/2,-dh/2,dw,dh);}
   ctx.restore();
@@ -776,11 +781,14 @@ function drawScene(ctx,sc,ft,opt){
   ctx.save();
   if(!opt.noCam){const C=camMat(sc,ft);if(C!==I6)ctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}
   if(sc.bgAsset){const im=getImage(sc.bgAsset);if(im)drawCover(ctx,im,W,H);}
-  for(const o of sc.objects)if(o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
-  // Beim Zeichnen kann die markierte Ebene vorne liegen; beim Abspielen und im Video gilt die echte Reihenfolge
+  // Jede Ebene: Objekte „hinter der Zeichnung“, dann die Zeichnung, dann ihre übrigen Objekte.
+  // Optional liegt beim Zeichnen die markierte Ebene vorne; beim Abspielen und im Video gilt immer die echte Reihenfolge.
   const ls=layersOf(sc),actFront=opt.active&&opt.actFront?ls.find(l=>l.id===opt.active.id):null;
+  const objsOf=l=>sc.objects.filter(o=>objLayer(sc,o)===l);
   for(const l of actFront?ls.filter(x=>x!==actFront).concat([actFront]):ls){
-    if(!l.visible)continue;const isAct=opt.active&&opt.active.id===l.id;
+    if(!l.visible)continue;const isAct=opt.active&&opt.active.id===l.id,mine=objsOf(l);
+    opt.lop=l.op??1;
+    for(const o of mine)if(o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
     if(opt.onion&&isAct){
       const pc=fi>0&&frameCanvas(sc,l,fi-1,T.onionPrev);if(pc){ctx.globalAlpha=.28;ctx.drawImage(pc,0,0);}
       const nc=fi<sc.length-1&&frameCanvas(sc,l,fi+1,T.onionNext);if(nc){ctx.globalAlpha=.2;ctx.drawImage(nc,0,0);}
@@ -788,8 +796,9 @@ function drawScene(ctx,sc,ft,opt){
     const c=isAct&&opt.layer!==undefined?opt.layer:frameCanvas(sc,l,fi);
     if(c){ctx.globalAlpha=l.op??1;ctx.drawImage(c,0,0,W,H);}
     ctx.globalAlpha=1;
+    for(const o of mine)if(!o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
   }
-  for(const o of sc.objects)if(!o.behind)drawObj(ctx,o,sc,ft,fi,opt,memo);
+  opt.lop=1;
   ctx.restore();
 }
 
@@ -881,7 +890,7 @@ function drawSelection(sc,fi){
 }
 function hitTest(w){
   const sc=scene(),fi=S.frame;
-  const order=[...sc.objects.filter(o=>!o.behind)].reverse().concat([...sc.objects.filter(o=>o.behind)].reverse());
+  const order=objectsInOrder(sc).reverse().filter(o=>{const l=objLayer(sc,o);return l.visible&&!l.locked;});
   const ws=worldScale();
   for(const o of order){if(!objVisible(o,fi))continue;const M=objMat(o,S.ft,sc),l=mapp(minv(M),w.x,w.y),sl=14/(ws*mscale(M));
     if(Math.abs(l.x)<=o.w/2+sl&&Math.abs(l.y)<=o.h/2+sl)return o;}
@@ -1029,7 +1038,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy}};
+    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined};
   shapeDims(o);return o;
 }
 function toLocal(o,w){return mapp(minv(objMat(o,S.ft,scene())),w.x,w.y);}
@@ -1343,14 +1352,16 @@ function fillObject(o,w,front){
 }
 function doFill(w){
   const sc=scene(),fi=S.frame;
-  for(const o of [...sc.objects.filter(o=>!o.behind)].reverse())if(fillObject(o,w,true))return;
+  const ord=objectsInOrder(sc).filter(o=>{const l=objLayer(sc,o);return l.visible&&!l.locked;}),ls=layersOf(sc),ai=ls.indexOf(actLayer(sc));
+  const above=o=>{const li=ls.indexOf(objLayer(sc,o));return li>ai||(li===ai&&!o.behind);};
+  for(const o of ord.filter(above).reverse())if(fillObject(o,w,true))return;
   const x0=Math.floor(w.x),y0=Math.floor(w.y);let reg=null;
   if(x0>=0&&y0>=0&&x0<W&&y0<H){const c=mkCanvas(W,H),x=c.getContext('2d',{willReadFrequently:true});const fc=frameCanvas(sc,actLayer(sc),fi);if(fc)x.drawImage(fc,0,0);
     reg=floodRegion(x.getImageData(0,0,W,H).data,W,H,x0,y0);}
   const applyFrame=()=>{if(layerBlocked())return;pushUndo();const fr=curFrames(sc);fr[fi]=insertFill(fr[fi],makeFill(reg,W));afterEdit();};
   // Geschlossene Fläche in der Zeichnung geht vor Objekten dahinter
   if(reg&&!reg.edge){applyFrame();return;}
-  for(const o of [...sc.objects.filter(o=>o.behind)].reverse())if(fillObject(o,w,false))return;
+  for(const o of ord.filter(o=>!above(o)).reverse())if(fillObject(o,w,false))return;
   if(reg)applyFrame();
 }
 
@@ -1436,7 +1447,9 @@ function updatePlayBtn(){$('#playBtn').innerHTML=icon(S.playing?'pause':'play');
 const tl=$('#tlCanvas'),tctx=tl.getContext('2d');
 const TL={w:0,h:0,sx:0,sy:0,CW:26,RH:28,RUL:22,LW:118,drag:null};
 function resizeTl(){const r=tl.getBoundingClientRect();TL.w=r.width;TL.h=r.height;TL.LW=r.width<560?84:118;tl.width=Math.round(r.width*dpr);tl.height=Math.round(r.height*dpr);drawTimeline();}
-function tlRows(){const sc=scene();const rows=[];const ls=layersOf(sc);for(let i=ls.length-1;i>=0;i--)rows.push({k:'layer',l:ls[i]});if(sc.cam&&sc.cam.keys.length)rows.push({k:'cam'});for(let i=sc.objects.length-1;i>=0;i--)rows.push({k:'obj',o:sc.objects[i]});for(const a of sc.audio)rows.push({k:'audio',a});return rows;}
+function tlRows(){const sc=scene();const rows=[];if(sc.cam&&sc.cam.keys.length)rows.push({k:'cam'});const ls=layersOf(sc);
+  for(let i=ls.length-1;i>=0;i--){const l=ls[i];rows.push({k:'layer',l});const mine=sc.objects.filter(o=>objLayer(sc,o)===l);
+    for(const o of [...mine.filter(o=>!o.behind)].reverse().concat([...mine.filter(o=>o.behind)].reverse()))rows.push({k:'obj',o,sub:true});}for(const a of sc.audio)rows.push({k:'audio',a});return rows;}
 function audioDur(a){const el=pool.m.get('a_'+a.id);return(el&&isFinite(el.duration)&&el.duration)||a.dur||2;}
 function ensureVisible(){const x=S.ft*TL.CW;const vw=TL.w-TL.LW;if(x<TL.sx)TL.sx=Math.max(0,x-TL.CW*2);else if(x+TL.CW>TL.sx+vw)TL.sx=x-vw+TL.CW*3;}
 let tlq=false;
@@ -1504,7 +1517,7 @@ function paintTimeline(){
     if(r.k==='cam'){c.fillStyle=T.key;c.font=`700 12px ${T.body}`;c.fillText('● Kamera',10,y+RH/2+4);return;}
     c.fillStyle=isSel?T.accent:T.fg;c.font=`${isSel?700:600} 12px ${T.body}`;
     const label=r.k==='layer'?(r.l.locked?'🔒 ':r.l.visible?'✎ ':'◌ ')+r.l.name:r.k==='obj'?(r.o.parent?'↳ ':'')+(({image:'▣ ',video:'▶ ',drawing:'◇ ',shape:'⬟ ',mouth:'◉ '})[r.o.type]||'')+r.o.name:'♪ '+r.a.name;
-    c.fillText(fitText(c,label,LW-16),10,y+RH/2+4);});
+    c.fillText(fitText(c,label,LW-16-(r.sub?12:0)),r.sub?22:10,y+RH/2+4);});
   c.restore();
 }
 function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
@@ -1559,7 +1572,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -1712,7 +1725,8 @@ function panelObj(){
     <div class="btns"><button class="btn sm" data-a="visFrom">Ab hier</button><button class="btn sm" data-a="visTo">Bis hier</button><button class="btn sm" data-a="visAll">Immer</button></div></div>
   <div class="grp"><div class="sub">Ebene</div>
     <div class="btns"><button class="btn sm" data-a="objFront">Nach vorne</button><button class="btn sm" data-a="objBack">Nach hinten</button><button class="btn sm ${o.flip?'on':''}" data-a="objFlip">Spiegeln</button></div>
-    <label class="check"><input id="ob-behind" type="checkbox" data-ob="behind" ${o.behind?'checked':''}>Hinter der Zeichnung</label>
+    <div class="row"><label for="ob-layer">Ebene</label><select id="ob-layer" class="field" data-ob="layer">${[...layersOf(sc)].reverse().map(l=>`<option value="${l.id}" ${objLayer(sc,o)===l?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div>
+    <label class="check"><input id="ob-behind" type="checkbox" data-ob="behind" ${o.behind?'checked':''}>Hinter der Zeichnung dieser Ebene</label>
     ${o.type==='video'?`<label class="check"><input id="ob-mute" type="checkbox" data-ob="muted" ${o.muted?'checked':''}>Videoton aus</label>`:''}</div>
   <div class="btns"><button class="btn sm" data-a="objToInv">${icon('box')}Ins Inventar</button><button class="btn sm" data-a="objDup">${icon('copy')}Duplizieren</button><button class="btn sm danger" data-a="objDel">${icon('trash')}Löschen</button></div>`;
 }
@@ -1750,12 +1764,12 @@ function panelMouth(o){
 }
 function panelLayers(){
   const sc=scene(),ls=layersOf(sc),act=actLayer(sc),ai=ls.indexOf(act);
-  const rows=[...ls].reverse().map(l=>{const n=l.frames.filter(f=>f.length).length;
+  const rows=[...ls].reverse().map(l=>{const n=l.frames.filter(f=>f.length).length,no=sc.objects.filter(o=>objLayer(sc,o)===l).length;
     return `<div class="layer-row ${l===act?'on':''} ${l.visible?'':'off'}">
       <button class="lay-ic" data-a="layVis" data-id="${l.id}" aria-label="${l.visible?'Ausblenden':'Einblenden'}" title="${l.visible?'Ausblenden':'Einblenden'}">${icon(l.visible?'eye':'eyeoff')}</button>
-      <button class="lay-name" data-a="layAct" data-id="${l.id}"><span class="nm">${esc(l.name)}</span><span class="st">${n} Frame${n===1?'':'s'} gezeichnet${(l.op??1)<1?' · '+Math.round(l.op*100)+' %':''}</span></button>
+      <button class="lay-name" data-a="layAct" data-id="${l.id}"><span class="nm">${esc(l.name)}</span><span class="st">${n} Frame${n===1?'':'s'} gezeichnet${no?' · '+no+' Objekt'+(no===1?'':'e'):''}${(l.op??1)<1?' · '+Math.round(l.op*100)+' %':''}</span></button>
       <button class="lay-ic" data-a="layLock" data-id="${l.id}" aria-label="${l.locked?'Entsperren':'Sperren'}" title="${l.locked?'Entsperren':'Sperren'}">${icon(l.locked?'lock':'unlock')}</button></div>`;}).join('');
-  return `<div class="grp"><h3>Ebenen</h3><p class="hint">Du zeichnest auf der markierten Ebene. Oben in der Liste liegt vorne. Radierer und Füllen wirken nur auf der markierten Ebene.</p>
+  return `<div class="grp"><h3>Ebenen</h3><p class="hint">Du zeichnest auf der markierten Ebene. Oben in der Liste liegt vorne, das gilt auch für Formen, Fotos und andere Objekte: Neue Objekte landen auf der markierten Ebene. Radierer und Füllen wirken nur auf der markierten Ebene.</p>
     <div class="layer-list">${rows}</div>
     <div class="btns"><button class="btn sm" data-a="layAdd">${icon('plus')}Neue Ebene</button><button class="btn sm" data-a="layDup">${icon('copy')}Kopieren</button>
       <button class="btn sm" data-a="layUp" ${ai===ls.length-1?'disabled':''} title="Nach vorne">↑</button><button class="btn sm" data-a="layDown" ${ai===0?'disabled':''} title="Nach hinten">↓</button>
@@ -1765,7 +1779,7 @@ function panelLayers(){
     <div class="row"><label for="ly-op">Deckkraft</label><input id="ly-op" type="range" min="5" max="100" value="${Math.round((act.op??1)*100)}" data-ly="op"><span class="val" id="ly-opv">${Math.round((act.op??1)*100)}%</span></div>
     <div class="btns"><button class="btn sm" data-a="layMerge" ${ai===0?'disabled':''}>Mit Ebene darunter zusammenfügen</button></div>
     <label class="check"><input id="ly-front" type="checkbox" data-ly="front" ${S.actFront?'checked':''}>Beim Zeichnen die markierte Ebene vorne zeigen</label>
-    <p class="hint">Beim Abspielen und im Video liegt immer die obere Ebene vorne.</p>
+    <p class="hint">Normalerweise aus. Beim Abspielen und im Video liegt immer die obere Ebene vorne.</p>
     <p class="hint">Tipp: Zeichne Umrisse auf einer Ebene und Farbe auf einer Ebene darunter. Dann kannst du ausmalen, ohne die Linien zu treffen.</p></div>`;
 }
 function panelInv(){
@@ -1803,7 +1817,7 @@ PB.addEventListener('input',e=>{
 PB.addEventListener('change',e=>{
   const t=e.target,sc=scene();
   if(t.dataset.tr){PB._edit=null;afterEdit();if(t.type==='color'){const ta=$('#tr-ta'),st=objState(selObj()||{keys:[]},S.frame);if(ta){ta.value=Math.round(st.ta*100);$('#trv-ta').textContent=Math.round(st.ta*100)+'%';}}else renderPanel();return;}
-  if(t.dataset.ly==='front'){S.actFront=t.checked;LS.set('actFront',S.actFront);requestRender();return;}
+  if(t.dataset.ly==='front'){S.actFront=t.checked;LS.set('actFront2',S.actFront);requestRender();return;}
   if(t.dataset.ly){const l=actLayer();if(t.dataset.ly==='name'){pushUndo();l.name=t.value.trim()||l.name;}PB._ly=false;afterEdit();renderPanel();updateModeUI();return;}
   if(t.dataset.cam){if(t.dataset.cam==='e'){const ks=sc.cam&&sc.cam.keys||[];const kb=[...ks].reverse().find(k=>k.f<=S.frame);if(kb){pushUndo();kb.e=t.value;}}
     PB._cam=null;afterEdit();renderPanel();return;}
@@ -1835,6 +1849,7 @@ PB.addEventListener('change',e=>{
     else if(f==='inF')o.inF=clamp((+t.value||1)-1,0,sc.length-1);
     else if(f==='outF')o.outF=t.value===''?null:clamp((+t.value||1)-1,o.inF||0,sc.length-1);
     else if(f==='behind')o.behind=t.checked;
+    else if(f==='layer'){o.layer=t.value;S.layerId=t.value;updateModeUI();}
     else if(f==='muted')o.muted=t.checked;
     afterEdit();renderPanel();return;}
   if(t.dataset.inv){const it=inventory.find(i=>i.id===S.invSel);if(!it)return;it[t.dataset.inv]=t.value.trim()||(t.dataset.inv==='cat'?'Eigene':it.name);if(t.dataset.inv==='cat')S.invCat='Alle';saveInv(it).then(renderPanel);}
@@ -1896,10 +1911,10 @@ const A={
   layUp:()=>{const ls=layersOf(scene()),i=ls.indexOf(actLayer());if(i>=ls.length-1)return;pushUndo();[ls[i],ls[i+1]]=[ls[i+1],ls[i]];afterEdit();renderPanel();},
   layDown:()=>{const ls=layersOf(scene()),i=ls.indexOf(actLayer());if(i<1)return;pushUndo();[ls[i],ls[i-1]]=[ls[i-1],ls[i]];afterEdit();renderPanel();},
   layDel:async()=>{const sc=scene(),ls=layersOf(sc),a=actLayer(sc);if(ls.length<2)return;
-    if(a.frames.some(f=>f.length)&&!await confirmDlg(`Ebene „${a.name}“ mit allen Zeichnungen löschen?`,'Löschen'))return;
-    pushUndo();const i=ls.indexOf(a);ls.splice(i,1);S.layerId=ls[Math.max(0,i-1)].id;afterEdit();renderPanel();updateModeUI();},
+    if(a.frames.some(f=>f.length)&&!await confirmDlg(`Ebene „${a.name}“ mit allen Zeichnungen löschen? Objekte darauf wandern auf die Ebene darunter.`,'Löschen'))return;
+    pushUndo();const i=ls.indexOf(a),to=ls[i>0?i-1:i+1];sc.objects.forEach(o=>{if(objLayer(sc,o)===a)o.layer=to.id;});ls.splice(i,1);S.layerId=to.id;afterEdit();renderPanel();updateModeUI();},
   layMerge:()=>{const sc=scene(),ls=layersOf(sc),a=actLayer(sc),i=ls.indexOf(a);if(i<1)return;const b=ls[i-1];pushUndo();
-    b.frames=b.frames.map((f,j)=>f.concat(flattenStrokes(a.frames[j]||[],a.op??1)));ls.splice(i,1);S.layerId=b.id;afterEdit();renderPanel();updateModeUI();toast('Zusammengefügt in „'+b.name+'“');},
+    b.frames=b.frames.map((f,j)=>f.concat(flattenStrokes(a.frames[j]||[],a.op??1)));sc.objects.forEach(o=>{if(objLayer(sc,o)===a)o.layer=b.id;});ls.splice(i,1);S.layerId=b.id;afterEdit();renderPanel();updateModeUI();toast('Zusammengefügt in „'+b.name+'“');},
   pivotEdit:()=>{S.pivotEdit=!S.pivotEdit;if(S.pivotEdit&&S.tool!=='select')setTool('select');updateModeUI();renderPanel();requestRender();if(S.pivotEdit)toast('Zieh den roten Drehpunkt an die Stelle des Gelenks.');},
   pivotAt:el=>{const o=selObj();if(!o)return;pushUndo();const v=el.dataset.v,p={c:{x:0,y:0},t:{x:0,y:-o.h/2},b:{x:0,y:o.h/2},l:{x:-o.w/2,y:0},r:{x:o.w/2,y:0}}[v];setPivot(o,p);afterEdit();renderPanel();},
   pathDraw:()=>{const o=selObj();if(!o)return;S.pathFor=o.id;S.camEdit=false;updateModeUI();renderPanel();requestRender();toast('Zeichne jetzt den Weg auf der Bühne.');},
@@ -2249,6 +2264,7 @@ function sampleProject(){
 async function openProject(p){
   if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();
   S.project=p;S.si=0;S.sel=null;S.layerId=null;p.scenes.forEach(layersOf);
+  p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(!o.layer||!layersOf(sc).some(l=>l.id===o.layer))o.layer=objLayer(sc,o).id;});});
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(o.keys&&o.keys.length===1){const k=o.keys[0];o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];}});
     if(sc.cam&&sc.cam.keys&&sc.cam.keys.length===1){sc.cam.base=camFull(sc.cam.keys[0]);sc.cam.keys=[];}});undoStack=[];redoStack=[];updateUndo();TL.sx=0;TL.sy=0;
   $('#projName').textContent=p.name;
