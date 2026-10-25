@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="25.10.2026 16:53">
+<meta name="tfs-version" content="25.10.2026 17:01">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -882,6 +882,16 @@ function warpIsRest(o,p){const r=warpRest(o);for(let i=0;i<18;i++)if(Math.abs(p[
 // Glatte Fläche durch alle 9 Punkte (quadratisch in beide Richtungen)
 const LQ=t=>[2*(t-.5)*(t-1),-4*t*(t-1),2*t*(t-.5)];
 function warpAt(p,u,v){const a=LQ(u),b=LQ(v);let x=0,y=0;for(let j=0;j<3;j++)for(let i=0;i<3;i++){const w=a[i]*b[j],k=(j*3+i)*2;x+=w*p[k];y+=w*p[k+1];}return{x,y};}
+// Teile, deren Form sich verändern lässt: das Objekt selbst oder bei Gruppen alle Formen und Bilder darin
+function morphables(o){if(o.type==='group')return descendants(scene(),o).filter(x=>x.type==='shape'||isWarp(x));return o.type==='shape'||isWarp(o)?[o]:[];}
+function setMorph(o,on){
+  if(on){o.morph=true;if(isWarp(o)&&(!o.pts||o.pts.length!==18))o.pts=warpRest(o);}
+  else if(o.morph){const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}
+  shapeDims(o);}
+// Hat das Objekt oder eine Gruppe darüber auf diesem Frame einen Keyframe?
+function keyHere(o,F){const sc=scene();for(let p=o,n=0;p&&n<50;p=findObj(sc,p.parent),n++)if(p.keys.some(k=>k.f===F))return true;return false;}
+// Keyframe-Frames der Gruppen über o (für den Start-Keyframe einer Formänderung)
+function parentKeyFrames(o){const sc=scene(),fs=[];for(let p=findObj(sc,o.parent),n=0;p&&n<50;p=findObj(sc,p.parent),n++)p.keys.forEach(k=>fs.push(k.f));return fs;}
 let warpC=null;
 // Zeichnet src verzerrt: erst in eine eigene Leinwand (deckend, ohne Nähte), dann mit Deckkraft auf die Bühne
 function drawWarped(ctx,src,p,dw,dh,ow,oh){
@@ -1335,7 +1345,10 @@ function movePt(e){
   if(!G.pushed){if(Math.hypot(x-G.s0.x,y-G.s0.y)<3)return;pushUndo();G.pushed=true;}
   const o=G.o,l=toLocal(o,toWorld(e.clientX,e.clientY)),i=G.i;
   if(o.morph){
-    if(S.autoKey||o.keys.some(k=>k.f===S.frame)){const k=keyAt(o,S.frame,true);const p=(k.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;}
+    if(S.autoKey||keyHere(o,S.frame)){
+      if(!o.keys.length){const fs=[...parentKeyFrames(o),o.inF||0].filter(f=>f!==S.frame);
+        if(fs.length){const a=fs.reduce((b,f)=>Math.abs(f-S.frame)<Math.abs(b-S.frame)?f:b);keyAt(o,a,true);}}
+      const k=keyAt(o,S.frame,true);const p=(k.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;}
     else{const cur=objState(o,S.ft).pts,dx=l.x-cur[i*2],dy=l.y-cur[i*2+1];editPtsAll(o,p=>{const q=p.slice();q[i*2]=r1(q[i*2]+dx);q[i*2+1]=r1(q[i*2+1]+dy);return q;});}
   }else{const p=o.pts.slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.pts=p;}
   shapeDims(o);requestRender();
@@ -2122,7 +2135,8 @@ function panelObj(){
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
-    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'||isWarp(o)?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${morphables(o).length?`<button class="chip ${morphables(o).every(x=>x.morph)?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    ${o.type==='group'&&morphables(o).length&&morphables(o).every(x=>x.morph)?`<p class="hint"><strong>Form ist an:</strong> Ziehe die weißen Punkte der Teile. Auf einem Frame mit Keyframe (oder mit Auto-Keyframe) ändert sich die Form nur dort, dazwischen verwandelt sie sich fließend. Tipp: Erst auf dem Start-Frame und dem End-Frame „Keyframe setzen“, dann auf dem End-Frame die Punkte ziehen.</p>`:''}
     ${isWarp(o)&&o.morph?`<p class="hint"><strong>Form ist an:</strong> Ziehe die 9 weißen Punkte auf der Bühne, um das Objekt zu verbiegen, zu stauchen oder zu strecken. Auf einem anderen Frame neu ziehen: Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt es sich fließend.</p>`:''}
     ${isWarp(o)&&o.pts?`<div class="btns"><button class="btn sm" data-a="warpReset">Form zurücksetzen</button></div>`:''}
     <p class="hint">Nur eingeschaltete Dinge ändern sich von Keyframe zu Keyframe. Alles andere ist in jedem Frame gleich, egal auf welchem Frame du es änderst.</p>
@@ -2329,7 +2343,7 @@ const A={
   objToInv:()=>{const o=selObj();if(o&&o.type==='group'){toast('Gruppen können nicht ins Inventar. Löse die Gruppe auf und speichere die Teile einzeln.');return;}if(o&&o.type==='mouth'){toast('Lippensync-Münder bleiben im Projekt. Die einzelnen Münder liegen schon im Inventar.');return;}invFromObject();},
   warpReset:()=>{const o=selObj();if(!o||!isWarp(o))return;pushUndo();if(o.morph)o.pts=warpRest(o);else delete o.pts;o.keys.forEach(k=>delete k.pts);afterEdit();renderPanel();toast('Form zurückgesetzt');},
   animTog:el=>{const o=selObj();if(!o)return;const g=el.dataset.v;pushUndo();let on;
-    if(g==='form'){on=!o.morph;if(on){o.morph=true;if(isWarp(o)&&(!o.pts||o.pts.length!==18))o.pts=warpRest(o);if(S.tool!=='select')setTool('select');}else{const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}shapeDims(o);}
+    if(g==='form'){const ms=morphables(o);on=!ms.every(x=>x.morph);ms.forEach(x=>setMorph(x,on));if(on&&S.tool!=='select')setTool('select');}
     else{const F={...animFlags(o)};on=!F[g];
       if(!on){const st=objState(o,S.frame);const keys={pos:['x','y'],s:['s'],r:['r'],o:['o'],tint:['tc','ta']}[g];o.keys.forEach(k=>keys.forEach(f=>{k[f]=st[f];}));}
       F[g]=on;o.anim=F;}
