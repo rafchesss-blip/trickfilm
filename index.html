@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="25.10.2026 15:41">
+<meta name="tfs-version" content="25.10.2026 16:13">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -173,6 +173,10 @@ input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-rad
 .tb{width:28px;height:24px;border-radius:6px;border:1px solid var(--line);background:var(--raised);font:700 11px var(--f-body);cursor:pointer;display:grid;place-items:center;padding:0;flex:none;color:var(--muted)}
 .tb:hover{border-color:var(--accent)}
 .tb.on-m{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.rec{background:var(--danger);border-color:var(--danger);color:#fff;font-variant-numeric:tabular-nums}
+.btn.rec::before{content:'';width:9px;height:9px;border-radius:50%;background:#fff;animation:recblink 1s steps(2) infinite}
+@keyframes recblink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.btn.rec::before{animation:none}}
 .tb.on-s{background:var(--key);border-color:var(--key);color:#1b1300}
 .tb svg.i{width:15px;height:15px}
 .trk-vol{display:flex;align-items:center;gap:4px}
@@ -391,7 +395,8 @@ const IC={
  box:'<path d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/>',
  dots:'<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
  chev:'<path d="M6 9.5l6 6 6-6"/>',
- chevr:'<path d="M9.5 6l6 6-6 6"/>'
+ chevr:'<path d="M9.5 6l6 6-6 6"/>',
+ mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>'
 };
 const icon=(n,cls='')=>`<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]||''}</svg>`;
 
@@ -562,7 +567,7 @@ function syncMedia(pl,sc,t,playing){
     if(o.type!=='video')continue;
     const el=pl.get(o.id,o.assetId,'video');el.muted=!!o.muted;
     const lt=t-(o.inF||0)/sc.fps;
-    const vis=lt>=0&&(o.outF==null||f<o.outF+1)&&(!el.duration||lt<el.duration);
+    const vis=lt>=0&&(o.outF==null||f<o.outF+1)&&objVisible(o,Math.floor(f+1e-6))&&(!el.duration||lt<el.duration);
     if(playing&&vis){
       if(el.paused){try{el.currentTime=lt;}catch(x){}el.play().catch(()=>{});}
       else if(Math.abs(el.currentTime-lt)>0.3){try{el.currentTime=lt;}catch(x){}}
@@ -709,7 +714,8 @@ function keyAt(o,F,create){
 }
 function objStateNoPath(o,ft){const p=o.path;o.path=null;const st=objState(o,ft);o.path=p;return st;}
 function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]||null;}
-function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF);}
+// o.hide: einzelne Frames, auf denen das Objekt fehlt (z. B. neu eingefügte leere Frames)
+function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF)&&!(o.hide&&o.hide.includes(fi));}
 // Ein Keyframe entsteht nur, wenn etwas geändert wird, das auch animiert werden soll
 function beginEdit(o,F,groups){const AF=animFlags(o),anim=!groups||groups.some(g=>AF[g]);const key=anim?keyAt(o,F,S.autoKey):null;
   const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:poses(o).map(k=>({...k})),key};}
@@ -1657,7 +1663,7 @@ function cloneFrameObjects(sc,from,to){
   return src.length;
 }
 // Sichtbarkeit bis Frame F erweitern (bei Gruppen auch für alle Teile)
-function extendVisible(o,F){const sc=scene();for(const x of [o,...descendants(sc,o)]){if(x.outF!=null)x.outF=Math.max(x.outF,F);x.inF=Math.min(x.inF||0,F);}}
+function extendVisible(o,F){const sc=scene();for(const x of [o,...descendants(sc,o)]){if(x.outF!=null)x.outF=Math.max(x.outF,F);x.inF=Math.min(x.inF||0,F);if(x.hide&&x.hide.includes(F))x.hide=x.hide.filter(f=>f!==F);}}
 function shiftTime(sc,from,d){
   for(const a of sc.audio)if((a.start||0)*sc.fps>from+0.001)a.start=Math.max(0,(a.start||0)+d/sc.fps);
   for(const o of sc.objects){
@@ -1668,11 +1674,14 @@ function shiftTime(sc,from,d){
     if(o.outF!=null&&o.outF>=from+(d>0?1:0))o.outF=Math.max(o.inF||0,o.outF+d);
     if(o.path)o.path={...o.path,f0:o.path.f0>from?Math.max(0,o.path.f0+d):o.path.f0,f1:o.path.f1>=from+(d>0?1:0)?Math.max(0,o.path.f1+d):o.path.f1};
     if(o.cues)o.cues=o.cues.filter(c=>!(d<0&&c.f===from)).map(c=>c.f>from?{...c,f:c.f+d}:c);
+    if(o.hide)o.hide=o.hide.filter(f=>!(d<0&&f===from)).map(f=>f>from?f+d:f);
   }
   if(sc.cam&&sc.cam.keys.length){if(d<0&&sc.cam.keys.length>1)sc.cam.keys=sc.cam.keys.filter(k=>k.f!==from);sc.cam.keys.forEach(k=>{if(k.f>from)k.f+=d;});}
 }
 function setLength(sc,n){n=clamp(n|0,1,3000);for(const l of layersOf(sc)){while(l.frames.length<n)l.frames.push([]);l.frames.length=n;}sc.length=n;if(S.frame>=n){S.frame=n-1;S.ft=S.frame;}}
 function addFrame(copy){pushUndo();const sc=scene(),i=S.frame;for(const l of layersOf(sc))l.frames.splice(i+1,0,copy?l.frames[i].slice():[]);sc.length++;shiftTime(sc,i,1);
+  // Neuer leerer Frame: nur der Hintergrund der Szene, kein Objekt. Beim Kopieren bleibt Ausgeblendetes ausgeblendet.
+  for(const o of sc.objects){if(copy?(o.hide&&o.hide.includes(i)):objVisible(o,i+1))o.hide=(o.hide||[]).concat(i+1);}
   const n=copy?cloneFrameObjects(sc,i,i+1):0;S.sel=null;S.multi=null;afterEdit();setFrame(i+1);renderPanel();toast(copy?'Frame kopiert'+(n?' (mit '+n+' Objekt'+(n===1?'':'en')+')':''):'Neuer leerer Frame eingefügt');}
 function delFrame(){const sc=scene(),i=S.frame;pushUndo();
   // Objekte, die nur auf diesem Frame waren, verschwinden mit
@@ -1791,24 +1800,27 @@ tl.addEventListener('pointerdown',e=>{
   const sc=scene(),{CW,RUL,LW}=TL,fpos=(x-LW+TL.sx)/CW;
   const D={id:e.pointerId,x0:x,sx0:TL.sx,moved:false,fpos,mode:'tap'};
   if(x<LW)D.mode='label';
-  else if(y<RUL){D.mode='scrub';navFrame(Math.floor(fpos));}
   else{const K=tlKeys(sc);if(K&&y>RUL+thumbSize().h){const k=K.keys.find(k=>Math.abs(LW+(k.f+.5)*CW-TL.sx-x)<14);if(k){D.mode='key';D.k=k;D.o=K.o;D.cam=!!K.cam;D.f0=k.f;}}}
+  // Finger über die Bilder ziehen = durch die Frames blättern (am Rand läuft die Leiste weiter)
+  if(D.mode==='tap'){D.mode='scrub';D.lx=x;navFrame(Math.floor(fpos));scrubEdge(D);}
   TL.drag=D;drawTimeline();
 });
 tl.addEventListener('pointermove',e=>{
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;const x=e.clientX-tl.getBoundingClientRect().left,dx=x-D.x0;if(Math.abs(dx)>6)D.moved=true;
-  if(D.mode==='scrub'){navFrame(Math.floor((x-TL.LW+TL.sx)/TL.CW));}
+  if(D.mode==='scrub'){D.lx=x;navFrame(Math.floor((x-TL.LW+TL.sx)/TL.CW));}
   else if(D.mode==='key'){if(!D.moved)return;const ks=()=>D.cam?scene().cam.keys:D.o.keys;if(!D.pushed){pushUndo();D.pushed=true;D.k=ks().find(k=>k.f===D.f0);}
     D.k.f=Math.max(0,Math.round(D.f0+dx/TL.CW));ks().sort((a,b)=>a.f-b.f);requestRender();drawTimeline();}
-  else if(D.moved){TL.sx=D.sx0-dx;clampSx();drawTimeline();}
 });
+function scrubEdge(D){requestAnimationFrame(()=>{if(TL.drag!==D)return;const x=D.lx,e=44,lw=TL.LW;let v=0;
+  if(x>TL.w-e)v=(x-(TL.w-e))/e;else if(x<lw+e&&TL.sx>0)v=-(lw+e-x)/e;
+  if(v){TL.sx+=clamp(v,-1.5,1.5)*TL.CW*0.35;clampSx();navFrame(Math.floor((x-lw+TL.sx)/TL.CW));drawTimeline();}
+  scrubEdge(D);});}
 function tlUp(e){
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;TL.drag=null;
   if(D.mode==='key'&&D.pushed){const host=D.cam?scene().cam:D.o;if(!D.cam)extendVisible(D.o,D.k.f);const dup=host.keys.filter(k=>k.f===D.k.f);if(dup.length>1)host.keys=host.keys.filter(k=>k===D.k||k.f!==D.k.f);setFrame(D.k.f);afterEdit();renderPanel();return;}
   if(!D.moved&&e.type==='pointerup'){
     if(D.mode==='label'){S.tab='layers';renderPanel();}
     else if(D.mode==='key')setFrame(D.f0);
-    else navFrame(Math.floor(D.fpos));
   }
   drawTimeline();
 }
@@ -1822,7 +1834,8 @@ function renderMixer(){
   const info=n?n+' Spur'+(n===1?'':'en')+(n>1?' · laufen gleichzeitig':'')+(solo?' · Solo an':''):'Noch kein Ton. Musik, Geräusche und Sprache kannst du übereinander legen.';
   mix.innerHTML=`<div class="mix-head">${n?`<button class="tb" data-a="mixToggle" title="${mixOpen?'Spuren einklappen':'Spuren zeigen'}" aria-label="${mixOpen?'Spuren einklappen':'Spuren zeigen'}" aria-expanded="${mixOpen}">${icon(mixOpen?'chev':'chevr')}</button>`:''}
     <span class="sub">Ton</span><span class="hint">${info}</span>
-    <button class="btn sm" data-a="insAudio">${icon('plus')}Ton hinzufügen</button></div>`+
+    ${REC?`<button class="btn sm rec" data-a="recAudio" id="recBtn" aria-label="Aufnahme stoppen">${recLabel()}</button>`:`<button class="btn sm" data-a="recAudio" title="Mit dem Mikrofon aufnehmen. Die Szene läuft dabei ab dem aktuellen Frame mit." aria-label="Ton aufnehmen">${icon('mic')}Aufnehmen</button>`}
+    <button class="btn sm" data-a="insAudio" ${REC?'disabled':''}>${icon('plus')}Ton hinzufügen</button></div>`+
     (mixOpen&&n?`<div id="mixRows">${sc.audio.map(a=>trackRow(a,solo)).join('')}</div>`:'');
   sizeLanes();drawTimeline();
 }
@@ -1859,6 +1872,32 @@ function paintLanes(){
     const px=X(S.ft+.5);if(px>=0&&px<=w){c.strokeStyle=T.danger;c.lineWidth=2;c.beginPath();c.moveTo(px,0);c.lineTo(px,h);c.stroke();}
   }
 }
+// Aufnahme mit dem Mikrofon: läuft ab dem aktuellen Frame, die Szene spielt dabei mit, damit man passend sprechen kann
+let REC=null;
+const recLabel=()=>{const t=REC?Math.floor((performance.now()-REC.t0)/1000):0;return 'Stopp '+Math.floor(t/60)+':'+String(t%60).padStart(2,'0');};
+async function startRecording(){
+  if(REC)return stopRecording();
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){toast('Aufnehmen geht in diesem Browser nicht.');return;}
+  unlockAudio();if(S.playing)stopPlayback();
+  try{if(navigator.audioSession)navigator.audioSession.type='play-and-record';}catch(e){}
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}
+  catch(e){try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(x){}toast('Kein Zugriff aufs Mikrofon. Erlaube es in den Einstellungen.');return;}
+  const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg'].find(m=>{try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;}})||'';
+  let mr;try{mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});}catch(e){stream.getTracks().forEach(t=>t.stop());toast('Aufnahme konnte nicht starten.');return;}
+  const chunks=[],f0=S.frame;
+  REC={mr,stream,f0,sc:scene(),t0:performance.now(),timer:setInterval(()=>{const b=$('#recBtn');if(b)b.textContent=recLabel();},250)};
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+  mr.onstop=()=>{const R=REC;REC=null;clearInterval(R.timer);stream.getTracks().forEach(t=>t.stop());
+    try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
+    const dur=(performance.now()-R.t0)/1000,type=mr.mimeType||mime||'audio/webm',ext=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm';
+    renderMixer();if(!chunks.length||dur<0.3){toast('Aufnahme war zu kurz.');return;}
+    const n=S.project.scenes.reduce((k,sc)=>k+sc.audio.filter(a=>/^Aufnahme \d+$/.test(a.name)).length,0)+1;
+    insertAudioFiles([new File([new Blob(chunks,{type})],'Aufnahme '+n+'.'+ext,{type})],R.f0,dur,R.sc);};
+  mr.onstart=()=>{REC.t0=performance.now();if(f0<scene().length-1)startPlayback(false);};
+  mr.start(250);renderMixer();toast('Aufnahme läuft. Zum Beenden auf „Stopp“ tippen.');
+}
+function stopRecording(){if(!REC)return;if(S.playing)stopPlayback();try{REC.mr.stop();}catch(e){REC=null;renderMixer();}}
+
 function afterTrackEdit(){if(S.playing)stopPlayback();afterEdit();renderMixer();}
 const findTrk=id=>scene().audio.find(a=>a.id===id);
 function trackDialog(id){
@@ -1923,13 +1962,13 @@ async function insertVideoFile([f]){
     addObject(o);
   }catch(err){toast('Dieses Video lässt sich nicht öffnen. Safari kann MP4 und MOV abspielen.');}
 }
-async function insertAudioFiles(files){
-  const sc=scene(),f0=S.frame,len0=sc.length;let ok=0,pushed=false;
+async function insertAudioFiles(files,at,durHint,target){
+  const sc=target||scene(),f0=at??S.frame,len0=sc.length;let ok=0,pushed=false;
   for(const f of files){
     try{const id=await addAsset(f,'audio');const e=await assetUrl(id);const el=document.createElement('audio');el.preload='metadata';el.src=e.url;
       await new Promise(res=>{el.onloadedmetadata=res;el.onerror=res;setTimeout(res,6000);});
       if(!pushed){pushUndo();pushed=true;}
-      const dur=isFinite(el.duration)&&el.duration>0?el.duration:2;
+      const dur=isFinite(el.duration)&&el.duration>0?el.duration:durHint||2;
       sc.audio.push({id:uid(),assetId:id,name:(f.name||'Ton').replace(/\.[^.]+$/,''),start:f0/sc.fps,volume:1,dur});
       const need=Math.ceil((f0/sc.fps+dur)*sc.fps);if(need>sc.length&&need<=3000)setLength(sc,need);
       audioBuf(id);ok++;
@@ -2201,6 +2240,7 @@ PB.addEventListener('change',e=>{
 const A={
   home:showHome,undo,redo,
   insImage:()=>pick('image/*',insertImageFiles,true),insVideo:()=>pick('video/*',insertVideoFile),insAudio:()=>pick('audio/*,.mp3,.m4a,.wav,.aac',insertAudioFiles,true),
+  recAudio:()=>startRecording(),
   mixToggle:()=>{mixOpen=!mixOpen;LS.set('mixOpen',mixOpen);renderMixer();},
   trkMute:el=>{const a=findTrk(el.dataset.id);if(!a)return;pushUndo();a.mute=!a.mute;afterEdit();renderMixer();updateLiveGains();},
   trkSolo:el=>{const a=findTrk(el.dataset.id);if(!a)return;pushUndo();a.solo=!a.solo;afterEdit();renderMixer();updateLiveGains();},
@@ -2240,7 +2280,7 @@ const A={
   keyNext:()=>{const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f>S.frame);if(k)setFrame(k.f);},
   visFrom:()=>{const o=selObj();if(!o)return;pushUndo();o.inF=S.frame;if(o.outF!=null&&o.outF<o.inF)o.outF=null;afterEdit();renderPanel();},
   visTo:()=>{const o=selObj();if(!o)return;pushUndo();o.outF=Math.max(S.frame,o.inF||0);afterEdit();renderPanel();},
-  visAll:()=>{const o=selObj();if(!o)return;pushUndo();o.inF=0;o.outF=null;afterEdit();renderPanel();},
+  visAll:()=>{const o=selObj();if(!o)return;pushUndo();o.inF=0;o.outF=null;for(const x of [o,...descendants(scene(),o)])delete x.hide;afterEdit();renderPanel();},
   objFront:()=>moveZ(1),objBack:()=>moveZ(-1),
   tint:el=>{const o=selObj();if(!o)return;pushUndo();const E=beginEdit(o,S.frame,['tint']);const vals={tc:el.dataset.v};if(E.base.ta<0.004)vals.ta=0.5;applyVals(E,vals);afterEdit();renderPanel();},
   objFlip:()=>{const o=selObj();if(!o)return;pushUndo();o.flip=!o.flip;afterEdit();renderPanel();},
@@ -2318,7 +2358,7 @@ function moveZ(d){const o=selObj();if(!o)return;const sc=scene(),l=objLayer(sc,o
   if(t<0||t>=g.length){toast(d>0?'Liegt schon ganz vorne auf dieser Ebene.':'Liegt schon ganz hinten auf dieser Ebene.');return;}
   const lo=d>0?g[t].max:(t>0?g[t-1].max:g[t].min-2),hi=d>0?(t+1<g.length?g[t+1].min:g[t].max+2):g[t].min;
   pushUndo();o.q=(lo+hi)/2;o.behind=false;afterEdit();renderPanel();toast(d>0?'Eins nach vorne':'Eins nach hinten');}
-function switchScene(i){if(S.playing)stopPlayback();pool.pauseAll();S.si=clamp(i,0,S.project.scenes.length-1);S.sel=null;S.multi=null;S.layerId=null;TL.sx=0;TL.sy=0;setFrame(0);refreshScenes();renderPanel();}
+function switchScene(i){stopRecording();if(S.playing)stopPlayback();pool.pauseAll();S.si=clamp(i,0,S.project.scenes.length-1);S.sel=null;S.multi=null;S.layerId=null;TL.sx=0;TL.sy=0;setFrame(0);refreshScenes();renderPanel();}
 function refreshScenes(){const sel=$('#sceneSel');sel.innerHTML=S.project.scenes.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join('');sel.value=S.si;renderMixer();}
 $('#sceneSel').addEventListener('change',e=>switchScene(+e.target.value));
 
@@ -2649,7 +2689,7 @@ function sampleProject(){
 
 /* ---------- Projekt öffnen ---------- */
 async function openProject(p){
-  if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();thumbs.clear();peaks.clear();
+  stopRecording();if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();thumbs.clear();peaks.clear();
   S.project=p;S.si=0;S.sel=null;S.multi=null;S.layerId=null;p.scenes.forEach(layersOf);
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(!o.layer||!layersOf(sc).some(l=>l.id===o.layer))o.layer=objLayer(sc,o).id;});});
   if(p.seq==null){p.seq=0;p.scenes.forEach(sc=>sc.objects.forEach((o,i)=>{o.q=o.behind?-1000+i:++p.seq;}));}
