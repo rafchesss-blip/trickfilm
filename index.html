@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="23.10.2026 17:45">
+<meta name="tfs-version" content="25.10.2026 15:41">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -155,9 +155,31 @@ input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-rad
 #tl{grid-area:tl;display:flex;flex-direction:column;padding-block:8px 10px;gap:6px;min-width:0}
 #tlbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-bottom:2px}
 #tlbar::-webkit-scrollbar{display:none}
+@media (max-width:1500px){#tlbar .btn.sm:has(.lbl-b){width:38px;height:38px;padding:0;justify-content:center}#tlbar .lbl-b{display:none}}
 #frameInfo{font:500 13px var(--f-mono);white-space:nowrap;padding:0 8px;font-variant-numeric:tabular-nums}
-#tlWrap{position:relative;height:168px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel)}
+#tlWrap{position:relative;height:76px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel)}
 #tlCanvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+/* Ton-Mischpult unter den Frames: jede Spur hat Lautstärke, Stumm und Solo, alle Spuren laufen gleichzeitig */
+#mix{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;display:flex;flex-direction:column}
+.mix-head{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 8px;min-width:0}
+.mix-head .hint{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mixRows{max-height:172px;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line)}
+.trk{display:flex;height:56px;border-bottom:1px solid var(--line)}
+.trk:last-child{border-bottom:0}
+.trk-ctl{flex:none;width:var(--tl-lw,200px);display:flex;flex-direction:column;justify-content:center;gap:2px;padding:3px 8px 3px 10px;border-right:1px solid var(--line);min-width:0}
+.trk-top{display:flex;align-items:center;gap:4px;min-width:0}
+.trk-top .nm{flex:1;min-width:0;font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trk.muted .trk-top .nm{opacity:.5}
+.tb{width:28px;height:24px;border-radius:6px;border:1px solid var(--line);background:var(--raised);font:700 11px var(--f-body);cursor:pointer;display:grid;place-items:center;padding:0;flex:none;color:var(--muted)}
+.tb:hover{border-color:var(--accent)}
+.tb.on-m{background:var(--danger);border-color:var(--danger);color:#fff}
+.tb.on-s{background:var(--key);border-color:var(--key);color:#1b1300}
+.tb svg.i{width:15px;height:15px}
+.trk-vol{display:flex;align-items:center;gap:4px}
+.trk-vol input[type=range]{height:22px}
+.trk-vol .val{min-width:40px;font-size:11px}
+.trk-lane{flex:1;min-width:0;position:relative}
+.trk-lane canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;display:block}
 
 /* Modal */
 #modal{position:fixed;inset:0;z-index:50;background:rgba(8,14,24,.5);display:grid;place-items:center;padding:16px}
@@ -240,7 +262,7 @@ details summary{list-style:none}
 @media (max-width:700px){
   .lbl-t{display:none}
   .btn{padding:0 10px}
-  #tlWrap{height:130px}
+  #tlWrap{height:66px}
   .brand span{display:none}
 }
 @media (prefers-reduced-motion:reduce){#panel{transition:none}}
@@ -289,19 +311,20 @@ details summary{list-style:none}
       <button class="btn icon" data-a="next" data-ic="next" title="Nächster Frame" aria-label="Nächster Frame"></button>
       <span id="frameInfo"></span>
       <span class="sep"></span>
-      <button class="btn sm" data-a="addFrame" data-ic="plus" title="Neuen leeren Frame nach diesem einfügen">Frame hinzufügen</button>
-      <button class="btn sm" data-a="dupFrame" data-ic="copy" title="Diesen Frame verdoppeln">Frame kopieren</button>
-      <button class="btn sm" data-a="prevCopy" data-ic="prevcopy" title="Den vorherigen Frame auf diesen Frame kopieren (P)">Vorherigen übernehmen</button>
-      <button class="btn sm danger" data-a="delFrame" data-ic="trash" title="Diesen Frame löschen">Frame löschen</button>
+      <button class="btn sm" data-a="addFrame" data-ic="plus" title="Neuen leeren Frame nach diesem einfügen" aria-label="Frame hinzufügen"><span class="lbl-b">Frame hinzufügen</span></button>
+      <button class="btn sm" data-a="dupFrame" data-ic="copy" title="Diesen Frame verdoppeln" aria-label="Frame kopieren"><span class="lbl-b">Frame kopieren</span></button>
+      <button class="btn sm" data-a="prevCopy" data-ic="prevcopy" title="Den vorherigen Frame auf diesen Frame kopieren (P)" aria-label="Vorherigen übernehmen"><span class="lbl-b">Vorherigen übernehmen</span></button>
+      <button class="btn sm danger" data-a="delFrame" data-ic="trash" title="Diesen Frame löschen" aria-label="Frame löschen"><span class="lbl-b">Frame löschen</span></button>
       <span class="sep"></span>
       <button class="btn sm" data-a="setKey" id="keyBtn" data-ic="key">Keyframe</button>
       <button class="btn sm" data-a="delKey" id="delKeyBtn">Key löschen</button>
       <span class="sep"></span>
-      <button class="btn sm" data-a="onion" id="onionBtn" data-ic="onion">Zwiebelhaut</button>
-      <button class="btn sm" data-a="loop" id="loopBtn" data-ic="loop">Schleife</button>
-      <button class="btn sm" data-a="film" data-ic="film">Ganzen Film</button>
+      <button class="btn sm" data-a="onion" id="onionBtn" data-ic="onion" title="Zwiebelhaut" aria-label="Zwiebelhaut"><span class="lbl-b">Zwiebelhaut</span></button>
+      <button class="btn sm" data-a="loop" id="loopBtn" data-ic="loop" title="Schleife" aria-label="Schleife"><span class="lbl-b">Schleife</span></button>
+      <button class="btn sm" data-a="film" data-ic="film" title="Ganzen Film abspielen" aria-label="Ganzen Film abspielen"><span class="lbl-b">Ganzen Film</span></button>
     </div>
     <div id="tlWrap"><canvas id="tlCanvas"></canvas></div>
+    <div id="mix"></div>
   </section>
 </div>
 
@@ -365,7 +388,10 @@ const IC={
  lock:'<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
  unlock:'<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/>',
  pipette:'<path d="M14.5 4.5l5 5"/><path d="M17 7l-9.5 9.5-3.5 1 1-3.5L14.5 4.5"/><path d="M13 6l5 5"/><path d="M4 20l1.5-1.5"/>',
- box:'<path d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/>'
+ box:'<path d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/>',
+ dots:'<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
+ chev:'<path d="M6 9.5l6 6 6-6"/>',
+ chevr:'<path d="M9.5 6l6 6-6 6"/>'
 };
 const icon=(n,cls='')=>`<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]||''}</svg>`;
 
@@ -462,33 +488,70 @@ class MediaPool{
 }
 let pool=new MediaPool();
 
-let actx=null;const abuf=new Map();let liveSrc=[],scrubSrc=[];
-function audioCtx(){if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}}if(actx.state==='suspended')actx.resume().catch(()=>{});return actx;}
-// iPad: Ton erst nach einer Berührung erlaubt
-document.addEventListener('pointerdown',()=>{if(S.project&&S.project.scenes.some(sc=>sc.audio.length))audioCtx();},{capture:true});
+let actx=null;const abuf=new Map(),peaks=new Map();let scrubSrc=[];
+// iPad: Als Wiedergabe-App anmelden, damit der Ton auch im Lautlos-Modus zu hören ist (wie bei Videos)
+try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
+function audioCtx(){if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}}if(actx.state!=='running')actx.resume().catch(()=>{});return actx;}
+// Safari gibt Ton erst beim Loslassen eines Tipps frei. Dann einmal kurz Stille abspielen, das schaltet den Ton sicher frei.
+let audioUnlocked=false,silentEl=null;
+// Eine Sekunde Stille als WAV (8 kHz, 8 Bit). Eine leere Datei in Endlosschleife würde den Browser blockieren.
+function silentWavUrl(){const n=8000,b=new Uint8Array(44+n),v=new DataView(b.buffer),w=(o,t)=>{for(let i=0;i<t.length;i++)b[o+i]=t.charCodeAt(i);};
+  w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);
+  w(36,'data');v.setUint32(40,n,true);b.fill(128,44);return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));}
+function unlockAudio(){
+  if(audioUnlocked&&actx&&actx.state==='running')return;const ctx=audioCtx();if(!ctx)return;
+  try{const b=ctx.createBuffer(1,1,22050),src=ctx.createBufferSource();src.buffer=b;src.connect(ctx.destination);src.start(0);}catch(e){}
+  // Ältere iPads ohne audioSession: ein stilles Audio-Element schaltet Web Audio auf „Wiedergabe“
+  if(!navigator.audioSession&&!silentEl){try{silentEl=new Audio(silentWavUrl());silentEl.loop=true;silentEl.setAttribute('playsinline','');silentEl.volume=0.01;silentEl.play().catch(()=>{});}catch(e){}}
+  audioUnlocked=true;
+}
+['touchend','click','keydown'].forEach(n=>document.addEventListener(n,()=>{if(S.project&&S.project.scenes.some(sc=>sc.audio.length))unlockAudio();},{capture:true}));
 function audioBuf(id){const b=abuf.get(id);if(b)return b;const ctx=audioCtx();if(!ctx)return null;
   const p=(async()=>{const rec=await DB.get('assets',id);const ab=await rec.blob.arrayBuffer();return await new Promise((res,rej)=>{const r=ctx.decodeAudioData(ab,res,rej);if(r&&r.then)r.then(res,rej);});})();
-  abuf.set(id,p);p.then(buf=>{abuf.set(id,buf);drawTimeline();},()=>abuf.delete(id));return p;}
+  abuf.set(id,p);p.then(buf=>{abuf.set(id,buf);drawTimeline();},()=>{abuf.delete(id);toast('Eine Tondatei lässt sich nicht abspielen.');});return p;}
 const readyBuf=id=>{const b=abuf.get(id);return b&&typeof b.then!=='function'?b:null;};
 function preloadAudio(scenes){for(const sc of scenes)for(const a of sc.audio)audioBuf(a.assetId);}
-function stopSceneAudio(){for(const s of liveSrc){try{s.stop();}catch(e){}}liveSrc=[];}
-// Startet alle Töne der Szene ab Szenenzeit t, genau zur Kontextzeit when
-function startSceneAudio(sc,t,when){
-  stopSceneAudio();const ctx=audioCtx();if(!ctx)return;
-  for(const a of sc.audio){const b=readyBuf(a.assetId);if(!b){audioBuf(a.assetId);continue;}
-    const off=t-(a.start||0);if(off>=b.duration)continue;
-    const g=ctx.createGain();g.gain.value=clamp(a.volume??1,0,1);g.connect(ctx.destination);
-    const src=ctx.createBufferSource();src.buffer=b;src.connect(g);
-    if(off>=0)src.start(when,off);else src.start(when-off,0);liveSrc.push(src);}
+
+/* Mischpult-Werte einer Spur: Lautstärke 0–200 %, Stumm, Solo, Ein-/Ausblenden, Wiederholen */
+const trkVol=a=>clamp(a.volume??1,0,2);
+function trkGain(sc,a){if(a.mute)return 0;if(sc.audio.some(x=>x.solo&&!x.mute)&&!a.solo)return 0;return trkVol(a);}
+// Hörbare Länge in Sekunden (mit „Wiederholen“ bis zum Szenenende)
+function trkLen(sc,a,b){const d=(b&&b.duration)||a.dur||2;return a.loop?Math.max(d,sc.length/sc.fps-(a.start||0)):d;}
+// Ein-/Ausblend-Faktor an Stelle x (Sekunden ab Spurbeginn)
+function trkEnv(a,L,x){const fi=Math.min(a.fi||0,L),fo=Math.min(a.fo||0,L);let v=1;if(fi>0)v=Math.min(v,x/fi);if(fo>0)v=Math.min(v,(L-x)/fo);return clamp(v,0,1);}
+// Spielt Spur a ab Szenenzeit t, beginnend zur Kontextzeit when. Ergebnis {src,g} oder null, wenn sie dort schon vorbei ist.
+function playTrack(ctx,out,sc,a,b,t,when,gain){
+  const L=trkLen(sc,a,b),off=t-(a.start||0);if(off>=L)return null;
+  const x0=Math.max(0,off),clip0=when-off,t0=clip0+x0;
+  const g=ctx.createGain();g.gain.value=gain;g.connect(out);
+  const env=ctx.createGain();env.connect(g);
+  const pts=[x0],add=x=>{if(x>pts[pts.length-1]+1e-4)pts.push(x);},fi=Math.min(a.fi||0,L),fo=Math.min(a.fo||0,L);
+  if(fi>0)add(fi);if(fo>0){add(L-fo);add(L);}
+  env.gain.setValueAtTime(trkEnv(a,L,x0),t0);for(let i=1;i<pts.length;i++)env.gain.linearRampToValueAtTime(trkEnv(a,L,pts[i]),clip0+pts[i]);
+  const src=ctx.createBufferSource();src.buffer=b;src.connect(env);
+  if(a.loop){src.loop=true;src.start(t0,x0%b.duration);src.stop(clip0+L);}else src.start(t0,x0);
+  return{src,g};
 }
+// Laufende Wiedergabe: Spuren, deren Datei erst später fertig geladen ist, setzen an der richtigen Stelle ein
+let live=null;
+function stopSceneAudio(){if(live)for(const n of live.nodes.values()){try{n.src.stop();}catch(e){}try{n.g.disconnect();}catch(e){}}live=null;}
+function startSceneAudio(sc,t,when){stopSceneAudio();if(!audioCtx())return;live={sc,t,when,nodes:new Map(),done:new Set()};ensureSceneAudio();}
+function ensureSceneAudio(){
+  if(!live)return;const ctx=audioCtx();if(!ctx||ctx.state!=='running')return;
+  const st=Math.max(ctx.currentTime+0.03,live.when),tt=live.t+(st-live.when);
+  for(const a of live.sc.audio){if(live.done.has(a.id))continue;const b=readyBuf(a.assetId);if(!b){audioBuf(a.assetId);continue;}
+    live.done.add(a.id);const n=playTrack(ctx,ctx.destination,live.sc,a,b,tt,st,trkGain(live.sc,a));if(n)live.nodes.set(a.id,n);}
+}
+// Lautstärke, Stumm und Solo wirken sofort, auch während des Abspielens
+function updateLiveGains(){if(!live||!actx)return;for(const a of live.sc.audio){const n=live.nodes.get(a.id);if(n)n.g.gain.setTargetAtTime(trkGain(live.sc,a),actx.currentTime,0.02);}}
 // Beim Blättern Frame für Frame: kurz den Ton dieses Frames anspielen
 function audioScrub(){
-  const sc=scene();if(!sc.audio.length||S.playing)return;const ctx=audioCtx();if(!ctx)return;
+  const sc=scene();if(!sc.audio.length||S.playing)return;unlockAudio();const ctx=audioCtx();if(!ctx)return;
   for(const s of scrubSrc){try{s.stop();}catch(e){}}scrubSrc=[];
   const t=S.frame/sc.fps,len=Math.max(1/sc.fps,0.12),now=ctx.currentTime+0.01;
-  for(const a of sc.audio){const b=readyBuf(a.assetId);if(!b){audioBuf(a.assetId);continue;}
-    const off=t-(a.start||0);if(off<0||off>=b.duration)continue;
-    const g=ctx.createGain(),v=clamp(a.volume??1,0,1);g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(v,now+0.008);
+  for(const a of sc.audio){const v=trkGain(sc,a);if(!v)continue;const b=readyBuf(a.assetId);if(!b){audioBuf(a.assetId);continue;}
+    let off=t-(a.start||0);if(off<0||off>=trkLen(sc,a,b))continue;if(a.loop)off%=b.duration;if(off>=b.duration)continue;
+    const g=ctx.createGain();g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(v,now+0.008);
     g.gain.setValueAtTime(v,now+len-0.02);g.gain.linearRampToValueAtTime(0,now+len);g.connect(ctx.destination);
     const src=ctx.createBufferSource();src.buffer=b;src.connect(g);src.start(now,off,len+0.01);scrubSrc.push(src);}
 }
@@ -508,19 +571,10 @@ function syncMedia(pl,sc,t,playing){
       if(el.readyState>=1){const tg=clamp(lt,0,Math.max(0,(el.duration||1)-0.05));if(Math.abs(el.currentTime-tg)>0.04){try{el.currentTime=tg;}catch(x){}}}
     }
   }
-  if(pl===pool)return;
-  for(const a of sc.audio){
-    const el=pl.get('a_'+a.id,a.assetId,'audio');el.volume=clamp(a.volume??1,0,1);
-    const lt=t-(a.start||0);
-    const on=playing&&lt>=0&&(!el.duration||lt<el.duration);
-    if(on){if(el.paused){try{el.currentTime=lt;}catch(x){}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-lt)>0.3){try{el.currentTime=lt;}catch(x){}}}
-    else if(!el.paused)el.pause();
-  }
 }
 function primeMedia(pl,scenes){
   for(const sc of scenes){
     for(const o of sc.objects)if(o.type==='video'){const el=pl.get(o.id,o.assetId,'video');el.muted=!!o.muted;if(el.src){el.play().catch(()=>{});el.pause();}}
-    if(pl!==pool)for(const a of sc.audio){const el=pl.get('a_'+a.id,a.assetId,'audio');if(el.src){el.play().catch(()=>{});el.pause();}}
   }
 }
 
@@ -699,6 +753,7 @@ function groupObjects(list){
   for(const o of list){if(o.type==='group')continue;const g=objGeom(o,S.ft);for(const q of [g.tl,g.tr,g.br,g.bl]){x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);y0=Math.min(y0,q.y);y1=Math.max(y1,q.y);}}
   const lay=objectsInOrder(sc).filter(o=>ids.has(o.id)).pop();
   const g=newObj('group','Gruppe',Math.max(20,x1-x0),Math.max(20,y1-y0),{layer:objLayer(sc,lay||list[0]).id});g.base={...BASE0,x:(x0+x1)/2,y:(y0+y1)/2};
+  g.inF=Math.min(...list.map(o=>o.inF||0));g.outF=list.some(o=>o.outF==null)?null:Math.max(...list.map(o=>o.outF));
   sc.objects.push(g);for(const o of top)setParent(o,g.id);return g;
 }
 // Auflösen: die Bewegung der Gruppe wird in die Keyframes der Teile übernommen, damit die Animation bleibt
@@ -797,7 +852,7 @@ async function autoCues(o){
   for(const a of sc.audio){
     try{const rec=await DB.get('assets',a.assetId);const buf=await rec.blob.arrayBuffer();
       const ab=await new Promise((res,rej)=>{const p=ctx.decodeAudioData(buf,res,rej);if(p&&p.then)p.then(res,rej);});
-      const d=ab.getChannelData(0),sr=ab.sampleRate,vol=a.volume??1;
+      const d=ab.getChannelData(0),sr=ab.sampleRate,vol=trkGain(sc,a);if(!vol)continue;
       for(let f=0;f<n;f++){const t0=f/sc.fps-(a.start||0);if(t0<0)continue;const i0=Math.floor(t0*sr),i1=Math.min(d.length,Math.floor((t0+1/sc.fps)*sr));if(i0>=d.length)break;
         let sum=0;for(let i=i0;i<i1;i+=4)sum+=d[i]*d[i];const rms=Math.sqrt(sum/Math.max(1,(i1-i0)/4))*vol;if(rms>level[f])level[f]=rms;}
     }catch(e){}
@@ -859,6 +914,7 @@ function drawScene(ctx,sc,ft,opt){
       ctx.globalAlpha=1;
     }
     const seg=(lo,hi,top)=>{
+      if(opt.direct){directLayer(ctx,l,fi,mine.length?lo:null,hi);return;}
       let c=mine.length?frameCanvas(sc,l,fi,null,lo,hi):frameCanvas(sc,l,fi);
       if(top&&isAct&&opt.live){if(!work)work=mkCanvas(W,H);const wx=work.getContext('2d');wx.setTransform(1,0,0,1,0,0);wx.clearRect(0,0,W,H);if(c)wx.drawImage(c,0,0);drawStroke(wx,opt.live);c=work;}
       if(c){ctx.globalAlpha=l.op??1;ctx.drawImage(c,0,0,W,H);ctx.globalAlpha=1;}
@@ -869,6 +925,18 @@ function drawScene(ctx,sc,ft,opt){
   }
   opt.lop=1;
   ctx.restore();
+}
+
+// Zeichnung einer Ebene direkt in eine kleine Leinwand (für Frame-Vorschaubilder, verdrängt nicht den Frame-Cache der Bühne)
+let thumbScratch=null;
+function directLayer(ctx,l,i,lo,hi){
+  const arr=l.frames[i];if(!arr||!arr.length)return;const part=lo!=null;
+  if(part&&!arr.some(s=>s.t!=='eraser'&&sq(s)>lo&&sq(s)<=hi))return;
+  const cv=ctx.canvas;if(!thumbScratch||thumbScratch.width!==cv.width||thumbScratch.height!==cv.height)thumbScratch=mkCanvas(cv.width,cv.height);
+  const x=thumbScratch.getContext('2d');x.setTransform(1,0,0,1,0,0);x.globalAlpha=1;x.globalCompositeOperation='source-over';x.clearRect(0,0,cv.width,cv.height);
+  x.setTransform(ctx.getTransform());
+  for(const s of arr)if(!part||(sq(s)>lo&&sq(s)<=hi)||(s.t==='eraser'&&sq(s)>hi))drawStroke(x,s);
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=l.op??1;ctx.drawImage(thumbScratch,0,0);ctx.restore();
 }
 
 /* ---------- Theme-Farben für Canvas ---------- */
@@ -1142,7 +1210,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
+    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   if(kind==='free'&&sharpPts&&sharpPts.some(Boolean))o.sharp=sharpPts;
   shapeDims(o);return o;
 }
@@ -1570,7 +1638,7 @@ async function saveNow(){clearTimeout(saveT);saveT=null;if(!S.project)return;S.p
   try{await DB.put('projects',S.project);}catch(e){toast('Speichern fehlgeschlagen: '+(e&&e.message||e));}}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&saveT)saveNow();});
 window.addEventListener('pagehide',()=>{if(saveT)saveNow();});
-function afterEdit(){scheduleSave();requestRender();drawTimeline();updateFrameInfo();}
+function afterEdit(){thumbVer++;scheduleSave();requestRender();drawTimeline();updateFrameInfo();}
 
 /* ---------- Bilder & Zeit ---------- */
 function setFrame(f){const sc=scene();S.frame=clamp(f|0,0,sc.length-1);S.ft=S.frame;syncMedia(pool,sc,S.frame/sc.fps,false);ensureVisible();requestRender();drawTimeline();updateFrameInfo();if(S.tab==='obj')renderPanel();}
@@ -1580,6 +1648,16 @@ function updateFrameInfo(){
   const o=selObj();const k=o&&o.keys.find(k=>k.f===S.frame);
   $('#keyBtn').disabled=!o;$('#delKeyBtn').disabled=!k;$('#keyBtn').classList.toggle('on',!!k);
 }
+const frameOnly=(o,i)=>o.outF!=null&&(o.inF||0)===i&&o.outF===i;
+// Objekte, die nur auf Frame „from“ sind, als eigene Kopien auf Frame „to“ legen
+function cloneFrameObjects(sc,from,to){
+  const src=sc.objects.filter(o=>frameOnly(o,from));if(!src.length)return 0;const map={};src.forEach(o=>map[o.id]=uid());
+  for(const o of src){const c=JSON.parse(JSON.stringify(o));if(o.strokes)c.strokes=o.strokes;c.id=map[o.id];if(c.parent&&map[c.parent])c.parent=map[c.parent];
+    if(c.keys.length){c.base={...fullKey(objState(o,from))};c.keys=[];}c.inF=to;c.outF=to;sc.objects.push(c);}
+  return src.length;
+}
+// Sichtbarkeit bis Frame F erweitern (bei Gruppen auch für alle Teile)
+function extendVisible(o,F){const sc=scene();for(const x of [o,...descendants(sc,o)]){if(x.outF!=null)x.outF=Math.max(x.outF,F);x.inF=Math.min(x.inF||0,F);}}
 function shiftTime(sc,from,d){
   for(const a of sc.audio)if((a.start||0)*sc.fps>from+0.001)a.start=Math.max(0,(a.start||0)+d/sc.fps);
   for(const o of sc.objects){
@@ -1594,8 +1672,12 @@ function shiftTime(sc,from,d){
   if(sc.cam&&sc.cam.keys.length){if(d<0&&sc.cam.keys.length>1)sc.cam.keys=sc.cam.keys.filter(k=>k.f!==from);sc.cam.keys.forEach(k=>{if(k.f>from)k.f+=d;});}
 }
 function setLength(sc,n){n=clamp(n|0,1,3000);for(const l of layersOf(sc)){while(l.frames.length<n)l.frames.push([]);l.frames.length=n;}sc.length=n;if(S.frame>=n){S.frame=n-1;S.ft=S.frame;}}
-function addFrame(copy){pushUndo();const sc=scene(),i=S.frame;for(const l of layersOf(sc))l.frames.splice(i+1,0,copy?l.frames[i].slice():[]);sc.length++;shiftTime(sc,i,1);afterEdit();setFrame(i+1);toast(copy?'Frame kopiert':'Neuer Frame eingefügt');}
+function addFrame(copy){pushUndo();const sc=scene(),i=S.frame;for(const l of layersOf(sc))l.frames.splice(i+1,0,copy?l.frames[i].slice():[]);sc.length++;shiftTime(sc,i,1);
+  const n=copy?cloneFrameObjects(sc,i,i+1):0;S.sel=null;S.multi=null;afterEdit();setFrame(i+1);renderPanel();toast(copy?'Frame kopiert'+(n?' (mit '+n+' Objekt'+(n===1?'':'en')+')':''):'Neuer leerer Frame eingefügt');}
 function delFrame(){const sc=scene(),i=S.frame;pushUndo();
+  // Objekte, die nur auf diesem Frame waren, verschwinden mit
+  const gone=new Set(sc.objects.filter(o=>frameOnly(o,i)).map(o=>o.id));
+  if(gone.size){sc.objects.filter(c=>c.parent&&gone.has(c.parent)&&!gone.has(c.id)).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(o=>!gone.has(o.id));S.sel=null;S.multi=null;}
   if(sc.length<=1){for(const l of layersOf(sc))l.frames[0]=[];}else{for(const l of layersOf(sc))l.frames.splice(i,1);sc.length--;shiftTime(sc,i,-1);}
   afterEdit();setFrame(Math.min(i,sc.length-1));}
 
@@ -1610,21 +1692,25 @@ function startPlayback(film){
   const sc=scene();
   let start=film?0:S.frame/sc.fps;if(!film&&S.frame>=sc.length-1)start=0;
   S.playing=true;$('#selHud').hidden=true;pool.pauseAll();updatePlayBtn();
-  const ctx=sc.audio.length||film&&S.project.scenes.some(x=>x.audio.length)?audioCtx():null;
-  play={film,t0:performance.now(),start,ctx,c0:ctx?ctx.currentTime+0.05:0};
-  if(ctx)startSceneAudio(sc,start,play.c0);
+  const ctx=sc.audio.length||film&&S.project.scenes.some(x=>x.audio.length)?(unlockAudio(),audioCtx()):null;
+  play={film,t0:performance.now(),start,ctx,c0:0,ctxOn:false};
+  if(ctx&&ctx.state==='running'){play.c0=ctx.currentTime+0.05;play.ctxOn=true;startSceneAudio(sc,start,play.c0);}
   requestAnimationFrame(tick);
 }
 function tick(now){
   if(!S.playing)return;
-  let sc=scene();const clock=()=>play.ctx&&play.ctx.state==='running'?Math.max(0,play.ctx.currentTime-play.c0):(now-play.t0)/1000;
+  let sc=scene();
+  // Wird der Ton erst während des Abspielens freigegeben, setzt er an der aktuellen Stelle ein
+  if(play.ctx&&play.ctx.state==='running'&&!play.ctxOn){const tp=(now-play.t0)/1000;play.c0=play.ctx.currentTime+0.02-tp;play.ctxOn=true;startSceneAudio(sc,tp+play.start,play.ctx.currentTime+0.02);}
+  if(play.ctxOn)ensureSceneAudio();
+  const clock=()=>play.ctxOn&&play.ctx.state==='running'?Math.max(0,play.ctx.currentTime-play.c0):(now-play.t0)/1000;
   let t=clock()+play.start;
   if(t>=sc.length/sc.fps){
     pool.pauseAll();stopSceneAudio();play.t0=now;play.start=0;t=0;
     if(play.film&&S.si<S.project.scenes.length-1){S.si++;refreshScenes();}
     else if(S.loop){if(play.film){S.si=0;refreshScenes();}}
     else{stopPlayback();setFrame(sc.length-1);return;}
-    sc=scene();if(play.ctx){play.c0=play.ctx.currentTime+0.02;startSceneAudio(sc,0,play.c0);}
+    sc=scene();if(play.ctxOn){play.c0=play.ctx.currentTime+0.02;startSceneAudio(sc,0,play.c0);}
   }
   S.ft=t*sc.fps;S.frame=Math.min(sc.length-1,Math.floor(S.ft));
   syncMedia(pool,sc,t,true);render();ensureVisible();drawTimeline();updateFrameInfo();
@@ -1633,127 +1719,184 @@ function tick(now){
 function stopPlayback(){S.playing=false;stopSceneAudio();setTimeout(updateSelHud);pool.pauseAll();S.ft=S.frame;updatePlayBtn();requestRender();drawTimeline();}
 function updatePlayBtn(){$('#playBtn').innerHTML=icon(S.playing?'pause':'play');}
 
-/* ---------- Zeitleiste ---------- */
+/* ---------- Zeitleiste: nur die Frames als Vorschaubilder ---------- */
 const tl=$('#tlCanvas'),tctx=tl.getContext('2d');
-const TL={w:0,h:0,sx:0,sy:0,CW:26,RH:28,RUL:22,LW:118,drag:null};
-function resizeTl(){const r=tl.getBoundingClientRect();TL.w=r.width;TL.h=r.height;TL.LW=r.width<560?84:118;tl.width=Math.round(r.width*dpr);tl.height=Math.round(r.height*dpr);drawTimeline();}
-function tlRows(){const sc=scene();const rows=[];if(sc.cam&&sc.cam.keys.length)rows.push({k:'cam'});const ls=layersOf(sc);
-  for(let i=ls.length-1;i>=0;i--){const l=ls[i];rows.push({k:'layer',l});const mine=sc.objects.filter(o=>objLayer(sc,o)===l);
-    for(const o of [...mine].sort(byQ).reverse())rows.push({k:'obj',o,sub:true});}for(const a of sc.audio)rows.push({k:'audio',a});return rows;}
+const TL={w:0,h:0,sx:0,sy:0,CW:60,RUL:20,LW:200,drag:null};
+function resizeTl(){const r=tl.getBoundingClientRect();TL.w=r.width;TL.h=r.height;const nar=r.width<640;TL.LW=nar?150:200;
+  const cw=nar?48:60;if(cw!==TL.CW){TL.CW=cw;thumbs.clear();}
+  document.documentElement.style.setProperty('--tl-lw',TL.LW+'px');
+  tl.width=Math.round(r.width*dpr);tl.height=Math.round(r.height*dpr);sizeLanes();drawTimeline();}
 function audioDur(a){const b=readyBuf(a.assetId);return(b&&b.duration)||a.dur||2;}
 function ensureVisible(){const x=S.ft*TL.CW;const vw=TL.w-TL.LW;if(x<TL.sx)TL.sx=Math.max(0,x-TL.CW*2);else if(x+TL.CW>TL.sx+vw)TL.sx=x-vw+TL.CW*3;}
+function clampSx(){TL.sx=clamp(TL.sx,0,Math.max(0,scene().length*TL.CW-(TL.w-TL.LW)+TL.CW*3));}
+function tlRange(sc){return{i0:Math.max(0,Math.floor(TL.sx/TL.CW)),i1:Math.min(sc.length-1,Math.ceil((TL.sx+TL.w-TL.LW)/TL.CW))};}
+// Keyframes, die unter den Bildern stehen: vom gewählten Objekt, sonst von der Kamera
+function tlKeys(sc){const o=selObj();if(o)return{keys:o.keys,o,label:o.name};if(sc.cam&&sc.cam.keys.length)return{keys:sc.cam.keys,cam:true,label:'Kamera'};return null;}
+// Vorschaubilder: werden nach jeder Änderung im Leerlauf nach und nach neu gezeichnet
+const thumbs=new Map();let thumbVer=0,thumbJob=null;
+function thumbSize(){const w=TL.CW-6;return{w,h:Math.round(w*9/16)};}
+const thumbKey=(sc,i)=>sc.id+':'+i;
+function makeFrameThumb(sc,i){const{w,h}=thumbSize(),k=thumbKey(sc,i);let e=thumbs.get(k);
+  if(!e||e.c.width!==w*2){e={c:mkCanvas(w*2,h*2),ver:''};thumbs.set(k,e);}
+  const x=e.c.getContext('2d');x.setTransform(e.c.width/W,0,0,e.c.height/H,0,0);drawScene(x,sc,i,{pool,direct:true});e.ver=thumbVer+'/'+imgVersion;}
+function queueThumbs(){if(thumbJob||S.playing)return;thumbJob=setTimeout(()=>{thumbJob=null;if(!S.project||S.playing)return;
+  const sc=scene(),ver=thumbVer+'/'+imgVersion,t0=performance.now(),{i0,i1}=tlRange(sc);let left=false;
+  const order=[S.frame];for(let i=i0;i<=i1;i++)if(i!==S.frame)order.push(i);
+  for(const i of order){if(i<i0||i>i1)continue;const e=thumbs.get(thumbKey(sc,i));if(e&&e.ver===ver)continue;if(performance.now()-t0>12){left=true;break;}makeFrameThumb(sc,i);}
+  drawTimeline();if(left)queueThumbs();},40);}
 let tlq=false;
 function drawTimeline(){if(tlq)return;tlq=true;requestAnimationFrame(()=>{tlq=false;paintTimeline();});}
 function paintTimeline(){
   if(!S.project||!TL.w)return;
-  const c=tctx,sc=scene(),{CW,RH,RUL,LW}=TL,w=TL.w,h=TL.h,rows=tlRows();
-  TL.sy=clamp(TL.sy,0,Math.max(0,RUL+rows.length*RH-h));
+  const c=tctx,sc=scene(),{CW,RUL,LW}=TL,w=TL.w,h=TL.h,{i0,i1}=tlRange(sc),X=i=>LW+i*CW-TL.sx;
+  const ts=thumbSize(),ty=RUL+4,ky=Math.round((ty+ts.h+h)/2),ver=thumbVer+'/'+imgVersion,K=tlKeys(sc);let stale=false;
   c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle=T.panel;c.fillRect(0,0,w,h);
-  const i0=Math.max(0,Math.floor(TL.sx/CW)),i1=Math.min(sc.length-1,Math.ceil((TL.sx+w-LW)/CW));
-  const X=i=>LW+i*CW-TL.sx;
-  c.save();c.beginPath();c.rect(LW,RUL,w-LW,h-RUL);c.clip();
-  rows.forEach((r,idx)=>{
-    const y=RUL+idx*RH-TL.sy;if(y>h||y+RH<RUL)return;
-    const isSel=(r.k==='obj'&&r.o.id===S.sel)||(r.k==='layer'&&r.l.id===actLayer(sc).id);
-    c.fillStyle=isSel?T.accentSoft:(idx%2?T.cellAlt:T.cell);c.fillRect(LW,y,w-LW,RH);
-    c.strokeStyle=T.line;c.lineWidth=1;
-    if(r.k==='layer'){
-      if(!r.l.visible)c.globalAlpha=.35;
-      for(let i=i0;i<=i1;i++){const x=X(i);c.strokeRect(x+.5,y+.5,CW,RH);
-        const n=r.l.frames[i].length;if(n){c.fillStyle=T.fg;c.beginPath();c.arc(x+CW/2,y+RH/2,Math.min(7,3+n*0.4),0,Math.PI*2);c.fill();}
-        else{c.fillStyle=T.line;c.beginPath();c.arc(x+CW/2,y+RH/2,2,0,Math.PI*2);c.fill();}}
-      c.globalAlpha=1;
-    }else if(r.k==='cam'){
-      const ks=sc.cam.keys;c.strokeStyle=T.key;c.lineWidth=2;
-      for(let k=0;k<ks.length-1;k++){c.beginPath();c.moveTo(X(ks[k].f)+CW/2,y+RH/2);c.lineTo(X(ks[k+1].f)+CW/2,y+RH/2);c.stroke();}
-      c.fillStyle=T.key;for(const k of ks)diamond(c,X(k.f)+CW/2,y+RH/2,k.f===S.frame?8:6.5);
-    }else if(r.k==='obj'){
-      const o=r.o,a=o.inF||0,b=o.outF==null?sc.length-1:o.outF;
-      if(o.path){c.fillStyle=T.key;c.globalAlpha=.35;c.fillRect(X(o.path.f0)+CW/2,y+RH/2-2,(o.path.f1-o.path.f0)*CW,4);c.globalAlpha=1;}
-      c.globalAlpha=.25;c.fillStyle=T.accent;c.fillRect(X(a),y+RH/2-6,(b-a+1)*CW,12);c.globalAlpha=1;
-      c.strokeStyle=T.key;c.lineWidth=2;
-      for(let k=0;k<o.keys.length-1;k++){c.beginPath();c.moveTo(X(o.keys[k].f)+CW/2,y+RH/2);c.lineTo(X(o.keys[k+1].f)+CW/2,y+RH/2);c.stroke();}
-      for(const k of o.keys){const x=X(k.f)+CW/2,d=k.f===S.frame?8:6.5;c.fillStyle=T.key;c.beginPath();c.moveTo(x,y+RH/2-d);c.lineTo(x+d,y+RH/2);c.lineTo(x,y+RH/2+d);c.lineTo(x-d,y+RH/2);c.closePath();c.fill();
-        if(TL.drag&&TL.drag.k===k){c.strokeStyle=T.fg;c.lineWidth=1.5;c.stroke();c.strokeStyle=T.key;c.lineWidth=2;}}
+  c.save();c.beginPath();c.rect(LW,0,w-LW,h);c.clip();
+  for(let i=i0;i<=i1;i++){const x=X(i),cur=i===S.frame;
+    c.fillStyle=cur?T.accentSoft:(i%2?T.cellAlt:T.cell);c.fillRect(x,RUL,CW,h-RUL);
+    const e=thumbs.get(thumbKey(sc,i));
+    if(e){c.drawImage(e.c,x+3,ty,ts.w,ts.h);if(e.ver!==ver)stale=true;}else{stale=true;c.fillStyle=sc.bg||'#ffffff';c.fillRect(x+3,ty,ts.w,ts.h);}
+    c.strokeStyle=cur?T.accent:T.line;c.lineWidth=cur?2.5:1;c.strokeRect(x+3,ty,ts.w,ts.h);
+    c.strokeStyle=T.line;c.lineWidth=1;c.beginPath();c.moveTo(x+CW-.5,RUL);c.lineTo(x+CW-.5,h);c.stroke();}
+  if(K){
+    if(K.o){const o=K.o,a=o.inF||0,b=o.outF==null?sc.length-1:o.outF;c.globalAlpha=.3;c.fillStyle=T.accent;c.fillRect(X(a)+3,ky-2,(b-a+1)*CW-6,4);c.globalAlpha=1;
       if(o.type==='mouth'&&o.cues){c.font=`700 10px ${T.mono}`;c.textAlign='center';
-        for(const q of o.cues){const x=X(q.f);if(x<LW-CW||x>w)continue;c.fillStyle=T.accent;roundRect(c,x+3,y+2,CW-6,11,3);c.fill();c.fillStyle=T.raised;c.fillText(q.v,x+CW/2,y+11);}
-        c.textAlign='left';}
-    }else{
-      const a=r.a,x=X((a.start||0)*sc.fps),bw=audioDur(a)*sc.fps*CW;
-      c.fillStyle=T.accent;c.globalAlpha=.8;roundRect(c,x,y+5,bw,RH-10,6);c.fill();c.globalAlpha=1;
-      c.fillStyle=T.raised;c.font=`600 11px ${T.body}`;c.save();c.beginPath();c.rect(x,y,bw,RH);c.clip();c.fillText('♪ '+a.name,x+7,y+RH/2+4);c.restore();
-    }
-  });
-  const xe=X(sc.length);c.fillStyle=T.panel;c.fillRect(xe,RUL,w,h);
-  c.fillStyle=T.accent;c.globalAlpha=.14;c.fillRect(X(S.frame),RUL,CW,h);c.globalAlpha=1;
-  c.restore();
-  // ruler
-  c.fillStyle=T.panel;c.fillRect(LW,0,w-LW,RUL);c.strokeStyle=T.line;c.beginPath();c.moveTo(LW,RUL-.5);c.lineTo(w,RUL-.5);c.stroke();
-  c.save();c.beginPath();c.rect(LW,0,w-LW,RUL);c.clip();
+        for(const q of o.cues){const x=X(q.f);if(x<LW-CW||x>w)continue;c.fillStyle=T.accent;roundRect(c,x+CW/2-8,ky-6,16,12,3);c.fill();c.fillStyle=T.raised;c.fillText(q.v,x+CW/2,ky+4);}}}
+    const ks=K.keys;c.strokeStyle=T.key;c.lineWidth=2;
+    for(let k=0;k<ks.length-1;k++){c.beginPath();c.moveTo(X(ks[k].f)+CW/2,ky);c.lineTo(X(ks[k+1].f)+CW/2,ky);c.stroke();}
+    for(const k of ks){c.fillStyle=T.key;diamond(c,X(k.f)+CW/2,ky,k.f===S.frame?7:5.5);if(TL.drag&&TL.drag.k===k){c.strokeStyle=T.fg;c.lineWidth=1.5;c.stroke();}}
+  }
+  // Lineal
+  c.fillStyle=T.panel;c.fillRect(LW,0,w-LW,RUL);c.strokeStyle=T.line;c.lineWidth=1;c.beginPath();c.moveTo(LW,RUL-.5);c.lineTo(w,RUL-.5);c.stroke();
   c.font=`500 10px ${T.mono}`;c.textAlign='center';
-  for(let i=i0;i<=i1;i++){const x=X(i);const sec=i%sc.fps===0;
-    if(sec&&i>0){c.fillStyle=T.accent;c.fillRect(x,0,1.5,RUL);c.fillText((i/sc.fps)+'s',x+CW/2,14);}
-    else if((i+1)%5===0||i===0){c.fillStyle=T.muted;c.fillText(String(i+1),x+CW/2,14);}}
+  for(let i=i0;i<=i1;i++){const x=X(i);
+    if(i%sc.fps===0&&i>0){c.fillStyle=T.accent;c.fillRect(x,0,1.5,RUL);c.fillText((i/sc.fps)+'s',x+CW/2,14);}
+    else if(CW>=40||(i+1)%5===0||i===0){c.fillStyle=i===S.frame?T.fg:T.muted;c.fillText(String(i+1),x+CW/2,14);}}
+  // Abspielkopf (über und unter dem Bild, damit das Bild frei bleibt)
+  const px=X(S.ft)+CW/2;if(px>=LW&&px<=w){c.strokeStyle=T.danger;c.lineWidth=2;c.beginPath();c.moveTo(px,0);c.lineTo(px,RUL);c.moveTo(px,ty+ts.h+1);c.lineTo(px,h);c.stroke();}
   c.restore();
-  // playhead
-  const px=LW+(S.ft+.5)*CW-TL.sx;if(px>=LW&&px<=w){c.strokeStyle=T.danger;c.lineWidth=2;c.beginPath();c.moveTo(px,0);c.lineTo(px,h);c.stroke();}
-  // labels
+  // Beschriftung links
   c.fillStyle=T.panel;c.fillRect(0,0,LW,h);c.strokeStyle=T.line;c.beginPath();c.moveTo(LW-.5,0);c.lineTo(LW-.5,h);c.stroke();
-  c.fillStyle=T.muted;c.font=`700 10px ${T.body}`;c.textAlign='left';c.fillText('EBENEN',10,15);
-  c.save();c.beginPath();c.rect(0,RUL,LW,h-RUL);c.clip();
-  rows.forEach((r,idx)=>{const y=RUL+idx*RH-TL.sy;if(y>h||y+RH<RUL)return;
-    const isSel=(r.k==='obj'&&r.o.id===S.sel)||(r.k==='layer'&&r.l.id===actLayer(sc).id);
-    if(isSel){c.fillStyle=T.accentSoft;c.fillRect(0,y,LW-1,RH);}
-    if(r.k==='cam'){c.fillStyle=T.key;c.font=`700 12px ${T.body}`;c.fillText('● Kamera',10,y+RH/2+4);return;}
-    c.fillStyle=isSel?T.accent:T.fg;c.font=`${isSel?700:600} 12px ${T.body}`;
-    const label=r.k==='layer'?(r.l.locked?'🔒 ':r.l.visible?'✎ ':'◌ ')+r.l.name:r.k==='obj'?(r.o.parent?'↳ ':'')+(({image:'▣ ',video:'▶ ',drawing:'◇ ',shape:'⬟ ',mouth:'◉ ',group:'▤ '})[r.o.type]||'')+r.o.name:'♪ '+r.a.name;
-    c.fillText(fitText(c,label,LW-16-(r.sub?12:0)),r.sub?22:10,y+RH/2+4);});
-  c.restore();
+  c.textAlign='left';c.fillStyle=T.muted;c.font=`700 10px ${T.body}`;c.fillText('FRAMES',10,14);
+  c.fillStyle=T.fg;c.font=`600 12px ${T.body}`;c.fillText(fitText(c,'✎ '+actLayer(sc).name,LW-20),10,ty+14);
+  if(K){c.fillStyle=T.key;c.font=`700 12px ${T.body}`;c.fillText(fitText(c,'◆ '+K.label,LW-20),10,ky+4);}
+  paintLanes();
+  if(stale)queueThumbs();
 }
 function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 function fitText(c,t,mw){if(c.measureText(t).width<=mw)return t;while(t.length>1&&c.measureText(t+'…').width>mw)t=t.slice(0,-1);return t+'…';}
 tl.addEventListener('pointerdown',e=>{
   if(!S.project)return;if(S.playing)stopPlayback();
   const r=tl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;try{tl.setPointerCapture(e.pointerId);}catch(z){}
-  const sc=scene(),rows=tlRows(),{CW,RH,RUL,LW}=TL;
-  const ri=Math.floor((y-RUL+TL.sy)/RH),row=y>=RUL?rows[ri]:null;const fpos=(x-LW+TL.sx)/CW;
-  const D={id:e.pointerId,x0:x,y0:y,sx0:TL.sx,sy0:TL.sy,moved:false,row,fpos,mode:'tap'};
-  if(x<LW){D.mode='label';}
+  const sc=scene(),{CW,RUL,LW}=TL,fpos=(x-LW+TL.sx)/CW;
+  const D={id:e.pointerId,x0:x,sx0:TL.sx,moved:false,fpos,mode:'tap'};
+  if(x<LW)D.mode='label';
   else if(y<RUL){D.mode='scrub';navFrame(Math.floor(fpos));}
-  else if(row&&row.k==='obj'){const k=row.o.keys.find(k=>Math.abs(LW+(k.f+.5)*CW-TL.sx-x)<13);if(k){D.mode='key';D.k=k;D.o=row.o;D.f0=k.f;select(row.o.id,true);}}
-  else if(row&&row.k==='cam'){const k=sc.cam.keys.find(k=>Math.abs(LW+(k.f+.5)*CW-TL.sx-x)<13);if(k){D.mode='key';D.k=k;D.cam=true;D.f0=k.f;}}
-  else if(row&&row.k==='audio'){const st=(row.a.start||0)*sc.fps;if(fpos>=st&&fpos<=st+audioDur(row.a)*sc.fps){D.mode='audio';D.a=row.a;D.st0=row.a.start||0;}}
+  else{const K=tlKeys(sc);if(K&&y>RUL+thumbSize().h){const k=K.keys.find(k=>Math.abs(LW+(k.f+.5)*CW-TL.sx-x)<14);if(k){D.mode='key';D.k=k;D.o=K.o;D.cam=!!K.cam;D.f0=k.f;}}}
   TL.drag=D;drawTimeline();
 });
 tl.addEventListener('pointermove',e=>{
-  const D=TL.drag;if(!D||D.id!==e.pointerId)return;const r=tl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-  const dx=x-D.x0,dy=y-D.y0;if(Math.hypot(dx,dy)>6)D.moved=true;const sc=scene();
+  const D=TL.drag;if(!D||D.id!==e.pointerId)return;const x=e.clientX-tl.getBoundingClientRect().left,dx=x-D.x0;if(Math.abs(dx)>6)D.moved=true;
   if(D.mode==='scrub'){navFrame(Math.floor((x-TL.LW+TL.sx)/TL.CW));}
   else if(D.mode==='key'){if(!D.moved)return;const ks=()=>D.cam?scene().cam.keys:D.o.keys;if(!D.pushed){pushUndo();D.pushed=true;D.k=ks().find(k=>k.f===D.f0);}
     D.k.f=Math.max(0,Math.round(D.f0+dx/TL.CW));ks().sort((a,b)=>a.f-b.f);requestRender();drawTimeline();}
-  else if(D.mode==='audio'){if(!D.moved)return;if(!D.pushed){pushUndo();D.pushed=true;D.a=scene().audio.find(a=>a.id===D.a.id);}
-    D.a.start=Math.max(0,Math.round(D.st0*sc.fps+dx/TL.CW)/sc.fps);drawTimeline();}
-  else if(D.moved){TL.sx=clamp(D.sx0-dx,0,Math.max(0,sc.length*TL.CW-(TL.w-TL.LW)+TL.CW*3));TL.sy=D.sy0-dy;drawTimeline();}
+  else if(D.moved){TL.sx=D.sx0-dx;clampSx();drawTimeline();}
 });
 function tlUp(e){
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;TL.drag=null;
-  if(D.mode==='key'&&D.pushed){const host=D.cam?scene().cam:D.o;const dup=host.keys.filter(k=>k.f===D.k.f);if(dup.length>1)host.keys=host.keys.filter(k=>k===D.k||k.f!==D.k.f);setFrame(D.k.f);afterEdit();renderPanel();return;}
-  if(D.mode==='audio'&&D.pushed){afterEdit();renderPanel();return;}
+  if(D.mode==='key'&&D.pushed){const host=D.cam?scene().cam:D.o;if(!D.cam)extendVisible(D.o,D.k.f);const dup=host.keys.filter(k=>k.f===D.k.f);if(dup.length>1)host.keys=host.keys.filter(k=>k===D.k||k.f!==D.k.f);setFrame(D.k.f);afterEdit();renderPanel();return;}
   if(!D.moved&&e.type==='pointerup'){
-    if(D.row&&D.row.k==='obj')select(D.row.o.id,true);
-    if(D.row&&D.row.k==='layer'){S.layerId=D.row.l.id;updateModeUI();if(S.tab==='layers')renderPanel();requestRender();}
-    if(D.row&&D.row.k==='cam'){S.tab='scene';renderPanel();}
-    if(D.mode!=='label')navFrame(Math.floor(D.fpos));
-    if(D.mode==='key')setFrame(D.f0);
+    if(D.mode==='label'){S.tab='layers';renderPanel();}
+    else if(D.mode==='key')setFrame(D.f0);
+    else navFrame(Math.floor(D.fpos));
   }
   drawTimeline();
 }
 tl.addEventListener('pointerup',tlUp);tl.addEventListener('pointercancel',tlUp);
-tl.addEventListener('wheel',e=>{e.preventDefault();TL.sx=Math.max(0,TL.sx+(e.deltaX||e.deltaY));if(e.shiftKey)TL.sy+=e.deltaY;drawTimeline();},{passive:false});
+tl.addEventListener('wheel',e=>{e.preventDefault();TL.sx+=e.deltaX||e.deltaY;clampSx();drawTimeline();},{passive:false});
+
+/* ---------- Ton-Mischpult ---------- */
+const mix=$('#mix');let mixOpen=LS.get('mixOpen',true),lanes=[],MD=null,mixVolUndo=false;
+function renderMixer(){
+  if(!S.project)return;const sc=scene(),n=sc.audio.length,solo=sc.audio.some(a=>a.solo&&!a.mute);
+  const info=n?n+' Spur'+(n===1?'':'en')+(n>1?' · laufen gleichzeitig':'')+(solo?' · Solo an':''):'Noch kein Ton. Musik, Geräusche und Sprache kannst du übereinander legen.';
+  mix.innerHTML=`<div class="mix-head">${n?`<button class="tb" data-a="mixToggle" title="${mixOpen?'Spuren einklappen':'Spuren zeigen'}" aria-label="${mixOpen?'Spuren einklappen':'Spuren zeigen'}" aria-expanded="${mixOpen}">${icon(mixOpen?'chev':'chevr')}</button>`:''}
+    <span class="sub">Ton</span><span class="hint">${info}</span>
+    <button class="btn sm" data-a="insAudio">${icon('plus')}Ton hinzufügen</button></div>`+
+    (mixOpen&&n?`<div id="mixRows">${sc.audio.map(a=>trackRow(a,solo)).join('')}</div>`:'');
+  sizeLanes();drawTimeline();
+}
+function trackRow(a,solo){const v=Math.round(trkVol(a)*100),silent=a.mute||(solo&&!a.solo);
+  return `<div class="trk ${silent?'muted':''}"><div class="trk-ctl">
+    <div class="trk-top"><span class="nm" title="${esc(a.name)}">${esc(a.name)}</span>
+      <button class="tb ${a.mute?'on-m':''}" data-a="trkMute" data-id="${a.id}" title="Stumm schalten" aria-label="Stumm" aria-pressed="${!!a.mute}">M</button>
+      <button class="tb ${a.solo?'on-s':''}" data-a="trkSolo" data-id="${a.id}" title="Solo: nur diese Spur hören" aria-label="Solo" aria-pressed="${!!a.solo}">S</button>
+      <button class="tb" data-a="trkMore" data-id="${a.id}" title="Start, Ein-/Ausblenden, Wiederholen, Löschen" aria-label="Einstellungen für ${esc(a.name)}">${icon('dots')}</button></div>
+    <div class="trk-vol"><input type="range" min="0" max="200" value="${v}" data-tv="${a.id}" aria-label="Lautstärke ${esc(a.name)}"><span class="val" id="tvv-${a.id}">${v} %</span></div></div>
+    <div class="trk-lane"><canvas data-lane="${a.id}"></canvas></div></div>`;}
+function sizeLanes(){lanes=[...mix.querySelectorAll('canvas[data-lane]')].map(cv=>{const r=cv.getBoundingClientRect();
+  cv.width=Math.max(1,Math.round(r.width*dpr));cv.height=Math.max(1,Math.round(r.height*dpr));return{cv,id:cv.dataset.lane,w:r.width,h:r.height};});}
+// Hüllkurve der Tondatei (100 Werte pro Sekunde) für die Wellenform
+function trackPeaks(id,b){let p=peaks.get(id);if(p)return p;const n=Math.max(1,Math.ceil(b.duration*100)),d=b.getChannelData(0),step=d.length/n;p=new Float32Array(n);
+  for(let i=0;i<n;i++){let m=0;const j1=Math.min(d.length,Math.floor((i+1)*step));for(let j=Math.floor(i*step);j<j1;j+=4){const v=Math.abs(d[j]);if(v>m)m=v;}p[i]=m;}
+  let mx=0;for(const v of p)if(v>mx)mx=v;if(mx>0)for(let i=0;i<n;i++)p[i]/=mx;peaks.set(id,p);return p;}
+function paintLanes(){
+  if(!S.project||!lanes.length)return;const sc=scene(),CW=TL.CW,fps=sc.fps,solo=sc.audio.some(a=>a.solo&&!a.mute),X=f=>f*CW-TL.sx;
+  for(const L of lanes){const a=sc.audio.find(x=>x.id===L.id);if(!a||!L.w)continue;const c=L.cv.getContext('2d'),w=L.w,h=L.h;
+    c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle=T.cell;c.fillRect(0,0,w,h);
+    const xe=X(sc.length);if(xe<w){c.fillStyle=T.panel;c.fillRect(Math.max(0,xe),0,w,h);}
+    c.strokeStyle=T.line;c.lineWidth=1;c.beginPath();for(let s=fps;s<sc.length;s+=fps){const x=X(s);if(x>=0&&x<=w){c.moveTo(x+.5,0);c.lineTo(x+.5,h);}}c.stroke();
+    const b=readyBuf(a.assetId),dur=(b&&b.duration)||a.dur||2,len=trkLen(sc,a,b),x0=X((a.start||0)*fps),x1=x0+len*fps*CW,col=a.mute||(solo&&!a.solo)?T.muted:T.accent;
+    c.save();roundRect(c,x0,4,x1-x0,h-8,7);c.globalAlpha=.2;c.fillStyle=col;c.fill();c.globalAlpha=1;c.strokeStyle=col;c.lineWidth=MD&&MD.a===a&&MD.pushed?2.5:1.5;c.stroke();c.clip();
+    if(b){const p=trackPeaks(a.assetId,b),mid=h/2,vol=trkVol(a),amp=(h-16)/2*(vol<=1?vol*0.8:0.8+(vol-1)*0.2);
+      c.fillStyle=col;c.globalAlpha=.8;
+      for(let px=Math.max(0,Math.floor(x0));px<Math.min(w,x1);px+=2){const tt=(px-x0)/(fps*CW),ti=a.loop?tt%dur:tt;
+        const hh=Math.max(.5,p[Math.min(p.length-1,Math.floor(ti*100))]*trkEnv(a,len,tt)*amp);c.fillRect(px,mid-hh,1.5,hh*2);}
+      c.globalAlpha=1;
+      if(a.loop){c.strokeStyle=col;c.setLineDash([3,3]);c.beginPath();for(let k=1;k*dur<len;k++){const x=x0+k*dur*fps*CW;if(x>=0&&x<=w){c.moveTo(x+.5,6);c.lineTo(x+.5,h-6);}}c.stroke();c.setLineDash([]);}
+    }else{c.fillStyle=T.muted;c.font=`500 11px ${T.body}`;c.textAlign='left';c.fillText('lädt …',Math.max(x0,0)+8,h-10);}
+    c.restore();
+    const px=X(S.ft+.5);if(px>=0&&px<=w){c.strokeStyle=T.danger;c.lineWidth=2;c.beginPath();c.moveTo(px,0);c.lineTo(px,h);c.stroke();}
+  }
+}
+function afterTrackEdit(){if(S.playing)stopPlayback();afterEdit();renderMixer();}
+const findTrk=id=>scene().audio.find(a=>a.id===id);
+function trackDialog(id){
+  const sc=scene(),a=findTrk(id);if(!a)return;
+  const d=openModal(`<h2>Tonspur</h2>
+    <div class="grp"><div class="row"><label for="td-n">Name</label><input id="td-n" class="field" value="${esc(a.name)}"></div>
+    <div class="row"><label for="td-s">Start</label><input id="td-s" class="field num" type="number" min="1" max="3000" value="${Math.round((a.start||0)*sc.fps)+1}"><span class="val" style="text-align:left">. Frame</span></div>
+    <div class="row"><label for="td-fi">Einblenden</label><input id="td-fi" class="field num" type="number" min="0" max="60" step="0.1" value="${a.fi||0}"><span class="val" style="text-align:left">Sekunden</span></div>
+    <div class="row"><label for="td-fo">Ausblenden</label><input id="td-fo" class="field num" type="number" min="0" max="60" step="0.1" value="${a.fo||0}"><span class="val" style="text-align:left">Sekunden</span></div>
+    <label class="check"><input type="checkbox" id="td-l" ${a.loop?'checked':''}>Wiederholen bis zum Ende der Szene</label>
+    <p class="hint">Die Spur kannst du unten auch direkt mit dem Finger nach links oder rechts schieben. Mit M ist sie stumm, mit S hörst du nur sie.</p></div>
+    <div class="foot"><button class="btn danger" id="td-del">${icon('trash')}Löschen</button><button class="btn" id="td-dup">${icon('copy')}Verdoppeln</button><span class="grow"></span><button class="btn" id="td-x">Abbrechen</button><button class="btn primary" id="td-ok">Fertig</button></div>`);
+  const num=(s,mx)=>clamp(parseFloat(String(d.querySelector(s).value).replace(',','.'))||0,0,mx);
+  d.querySelector('#td-x').onclick=closeModal;
+  d.querySelector('#td-ok').onclick=()=>{pushUndo();const t=findTrk(id);if(t){t.name=d.querySelector('#td-n').value.trim()||t.name;t.start=Math.max(0,Math.round(num('#td-s',3000))-1)/sc.fps;
+    t.fi=num('#td-fi',60);t.fo=num('#td-fo',60);t.loop=d.querySelector('#td-l').checked;}closeModal();afterTrackEdit();};
+  d.querySelector('#td-del').onclick=()=>{pushUndo();const s2=scene();s2.audio=s2.audio.filter(x=>x.id!==id);closeModal();afterTrackEdit();toast('Tonspur gelöscht');};
+  d.querySelector('#td-dup').onclick=()=>{pushUndo();const t=findTrk(id);if(t){const s2=scene();s2.audio.splice(s2.audio.indexOf(t)+1,0,{...t,id:uid(),name:t.name+' (2)',solo:false});}closeModal();afterTrackEdit();toast('Spur verdoppelt. Beide laufen gleichzeitig.');};
+}
+mix.addEventListener('input',e=>{const t=e.target;if(!t.dataset.tv)return;const a=findTrk(t.dataset.tv);if(!a)return;if(!mixVolUndo){pushUndo();mixVolUndo=true;}
+  let v=+t.value;if(Math.abs(v-100)<4)v=100;a.volume=v/100;const l=$('#tvv-'+a.id);if(l)l.textContent=v+' %';updateLiveGains();drawTimeline();});
+mix.addEventListener('change',e=>{if(e.target.dataset.tv){mixVolUndo=false;scheduleSave();}});
+mix.addEventListener('pointerdown',e=>{const cv=e.target.closest('canvas[data-lane]');if(!cv||!S.project)return;if(S.playing)stopPlayback();
+  const sc=scene(),a=findTrk(cv.dataset.lane);if(!a)return;try{cv.setPointerCapture(e.pointerId);}catch(z){}
+  const x=e.clientX-cv.getBoundingClientRect().left,fpos=(x+TL.sx)/TL.CW,st=(a.start||0)*sc.fps,len=trkLen(sc,a,readyBuf(a.assetId))*sc.fps;
+  MD={id:e.pointerId,cv,x0:x,sx0:TL.sx,a,st0:st,moved:false,fpos,mode:fpos>=st&&fpos<=st+len?'clip':'pan'};});
+mix.addEventListener('pointermove',e=>{if(!MD||MD.id!==e.pointerId)return;const dx=e.clientX-MD.cv.getBoundingClientRect().left-MD.x0;if(Math.abs(dx)>6)MD.moved=true;if(!MD.moved)return;
+  if(MD.mode==='clip'){if(!MD.pushed){pushUndo();MD.pushed=true;}MD.a.start=Math.max(0,Math.round(MD.st0+dx/TL.CW))/scene().fps;drawTimeline();}
+  else{TL.sx=MD.sx0-dx;clampSx();drawTimeline();}});
+function mixUp(e){if(!MD||MD.id!==e.pointerId)return;const D=MD;MD=null;
+  if(D.pushed){afterEdit();toast('„'+D.a.name+'“ beginnt jetzt bei Frame '+(Math.round(D.a.start*scene().fps)+1));return;}
+  if(!D.moved&&e.type==='pointerup')navFrame(Math.floor(D.fpos));drawTimeline();}
+mix.addEventListener('pointerup',mixUp);mix.addEventListener('pointercancel',mixUp);
+mix.addEventListener('wheel',e=>{if(!e.target.closest('canvas[data-lane]')||Math.abs(e.deltaX)<Math.abs(e.deltaY)&&!e.shiftKey)return;e.preventDefault();TL.sx+=e.deltaX||e.deltaY;clampSx();drawTimeline();},{passive:false});
 
 /* ---------- Auswahl & Keyframe-Aktionen ---------- */
 function select(id,keepTab){if(id!==S.sel)S.pivotEdit=false;S.multi=null;S.sel=id;if(id&&!keepTab&&S.tab!=='inv')S.tab='obj';if(id&&keepTab&&S.tab==='scene')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();}
-function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();keyAt(o,S.frame,true);afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1));}
+function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();const was=objVisible(o,S.frame);extendVisible(o,S.frame);keyAt(o,S.frame,true);if(!was)toast('„'+o.name+'“ ist jetzt bis Frame '+(S.frame+1)+' sichtbar');afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1));}
 function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){pushUndo();o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];afterEdit();renderPanel();toast('Keyframe gelöscht. Das Objekt bleibt so stehen.');return;}
   pushUndo();o.keys=o.keys.filter(x=>x!==k);afterEdit();renderPanel();}
 
@@ -1762,7 +1905,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:0,outF:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:S.project?S.frame:0,outF:S.project?S.frame:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -1775,19 +1918,26 @@ async function insertVideoFile([f]){
     await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=rej;setTimeout(res,6000);});
     const s=fit(v.videoWidth||640,v.videoHeight||360,W*0.7,H*0.7);
     const o=newObj('video',(f.name||'Video').replace(/\.[^.]+$/,''),s.w,s.h,{assetId:id,muted:false});
-    const sc=scene();o.inF=S.frame;
+    const sc=scene();o.inF=S.frame;o.outF=isFinite(v.duration)&&v.duration>0?S.frame+Math.max(0,Math.ceil(v.duration*sc.fps)-1):null;
     if(isFinite(v.duration)&&v.duration>0){const need=S.frame+Math.ceil(v.duration*sc.fps);if(need>sc.length&&need<=3000){pushUndo();setLength(sc,need);toast('Szene auf Videolänge verlängert');}}
     addObject(o);
   }catch(err){toast('Dieses Video lässt sich nicht öffnen. Safari kann MP4 und MOV abspielen.');}
 }
-async function insertAudioFile([f]){
-  try{const id=await addAsset(f,'audio');const e=await assetUrl(id);const a=document.createElement('audio');a.preload='metadata';a.src=e.url;
-    await new Promise(res=>{a.onloadedmetadata=res;a.onerror=res;setTimeout(res,6000);});
-    pushUndo();const sc=scene(),dur=isFinite(a.duration)?a.duration:2;sc.audio.push({id:uid(),assetId:id,name:(f.name||'Ton').replace(/\.[^.]+$/,''),start:S.frame/sc.fps,volume:1,dur});
-    const need=Math.ceil((S.frame/sc.fps+dur)*sc.fps);let more='';
-    if(need>sc.length&&need<=3000){const add=need-sc.length;setLength(sc,need);more=' · '+add+' leere Frames angehängt, damit der Ton Platz hat';}
-    audioBuf(id);S.tab='scene';afterEdit();renderPanel();toast('Ton ab Frame '+(S.frame+1)+' eingefügt'+more);
-  }catch(err){toast('Diese Tondatei lässt sich nicht öffnen.');}
+async function insertAudioFiles(files){
+  const sc=scene(),f0=S.frame,len0=sc.length;let ok=0,pushed=false;
+  for(const f of files){
+    try{const id=await addAsset(f,'audio');const e=await assetUrl(id);const el=document.createElement('audio');el.preload='metadata';el.src=e.url;
+      await new Promise(res=>{el.onloadedmetadata=res;el.onerror=res;setTimeout(res,6000);});
+      if(!pushed){pushUndo();pushed=true;}
+      const dur=isFinite(el.duration)&&el.duration>0?el.duration:2;
+      sc.audio.push({id:uid(),assetId:id,name:(f.name||'Ton').replace(/\.[^.]+$/,''),start:f0/sc.fps,volume:1,dur});
+      const need=Math.ceil((f0/sc.fps+dur)*sc.fps);if(need>sc.length&&need<=3000)setLength(sc,need);
+      audioBuf(id);ok++;
+    }catch(err){toast('„'+(f.name||'Datei')+'“ lässt sich nicht öffnen.');}
+  }
+  if(!ok)return;if(!mixOpen){mixOpen=true;LS.set('mixOpen',true);}
+  afterEdit();renderMixer();renderPanel();
+  toast((ok===1?'Ton':ok+' Töne')+' ab Frame '+(f0+1)+' eingefügt'+(sc.length>len0?' · '+(sc.length-len0)+' leere Frames angehängt, damit der Ton Platz hat':''));
 }
 function frameToObject(){
   const sc=scene(),arr=curFrames(sc)[S.frame];if(!arr.length){toast('Auf dieser Ebene ist in diesem Frame noch nichts gezeichnet.');return;}
@@ -1847,9 +1997,6 @@ function panelScene(){
   const list=S.project.scenes.map((s,i)=>`<button class="scene-item ${i===S.si?'on':''}" data-a="sceneGo" data-i="${i}"><canvas width="160" height="90" data-thumb="${i}"></canvas><span class="meta"><div class="nm">${esc(s.name)}</div><div class="st">${s.fps} fps · ${s.length} Frames · ${fmtS(s.length/s.fps)}</div></span></button>`).join('');
   const fpsChips=[6,8,12,15,24,30].map(f=>`<button class="chip ${sc.fps===f?'on':''}" data-a="fps" data-v="${f}">${f}</button>`).join('');
   const bgs=['#ffffff','#f4efe4','#bfe3f7','#1b2142','#2b2b2b','#cfe8c4'].map(c=>`<button class="chip" data-a="bgc" data-v="${c}" style="width:30px;padding:0;background:${c}" aria-label="Hintergrund ${c}"></button>`).join('');
-  const audio=sc.audio.map(a=>`<div class="audio-item"><div class="row"><span class="nm" style="flex:1">♪ ${esc(a.name)}</span><button class="btn sm danger" data-a="audioDel" data-id="${a.id}">${icon('trash')}</button></div>
-    <div class="row"><label for="au-s-${a.id}">Start</label><input id="au-s-${a.id}" class="field num" type="number" step="0.1" min="0" value="${(a.start||0).toFixed(2)}" data-au="start" data-id="${a.id}"><span class="val">s</span></div>
-    <div class="row"><label for="au-v-${a.id}">Lautstärke</label><input id="au-v-${a.id}" type="range" min="0" max="100" value="${Math.round((a.volume??1)*100)}" data-au="volume" data-id="${a.id}"></div></div>`).join('');
   return `<div class="grp"><div class="sub">Alle Szenen</div><div class="scene-list">${list}</div>
     <div class="btns"><button class="btn sm" data-a="sceneAdd">${icon('plus')}Neue Szene</button><button class="btn sm" data-a="sceneDup">${icon('copy')}Kopieren</button>
     <button class="btn sm" data-a="sceneUp" ${S.si===0?'disabled':''}>↑</button><button class="btn sm" data-a="sceneDown" ${S.si===S.project.scenes.length-1?'disabled':''}>↓</button>
@@ -1863,9 +2010,7 @@ function panelScene(){
   <div class="grp"><div class="sub">Hintergrund</div>
     <div class="row"><input id="sc-bg" type="color" value="${esc(sc.bg)}" data-sc="bg" aria-label="Hintergrundfarbe"><div class="chips">${bgs}</div></div>
     <div class="btns"><button class="btn sm" data-a="bgImage">${icon('image')}${sc.bgAsset?'Bild ersetzen':'Bild als Hintergrund'}</button>${sc.bgAsset?`<button class="btn sm danger" data-a="bgClear">Bild entfernen</button>`:''}</div></div>
-  ${panelCam(sc)}
-  <div class="grp"><div class="sub">Ton in dieser Szene</div>${audio||'<p class="hint">Noch kein Ton. Musik oder Sprache startet ab dem aktuellen Frame.</p>'}
-    <div class="btns"><button class="btn sm" data-a="insAudio">${icon('audio')}Ton hinzufügen</button></div></div>`;
+  ${panelCam(sc)}`;
 }
 function panelCam(sc){
   const st=camState(sc,S.frame),ks=sc.cam&&sc.cam.keys||[],k=ks.find(k=>k.f===S.frame),kb=[...ks].reverse().find(k=>k.f<=S.frame);
@@ -1894,6 +2039,7 @@ function panelObj(){
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
   return groupBox+`<div class="grp"><div class="row"><input id="ob-name" class="field" style="flex:1" value="${esc(o.name)}" data-ob="name" aria-label="Objektname"><button class="btn danger" data-a="objDel" title="Objekt löschen" aria-label="Objekt löschen">${icon('trash')}Löschen</button></div>
     <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: kein Keyframe`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
+    ${objVisible(o,S.frame)?'':`<p class="hint"><strong>Auf diesem Frame nicht sichtbar.</strong> „Keyframe setzen“ macht es bis hierher sichtbar, oder unten unter „Sichtbar“ einstellen.</p>`}
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
@@ -2010,7 +2156,6 @@ PB.addEventListener('input',e=>{
   else if(t.dataset.cam&&t.dataset.cam!=='e'){const sc=scene();if(!PB._cam){pushUndo();PB._cam=beginCamEdit(sc,S.frame);}
     const f=t.dataset.cam,v=+t.value,vals={};vals[f]=f==='z'?v/100:v;applyCam(PB._cam,vals);$('#camv-'+f).textContent=Math.round(v)+({z:'%',r:'°'}[f]||'');requestRender();drawTimeline();}
   else if(t.dataset.ly==='op'){const l=actLayer();if(!PB._ly){pushUndo();PB._ly=true;}l.op=+t.value/100;$('#ly-opv').textContent=t.value+'%';requestRender();}
-  else if(t.dataset.au==='volume'){const a=scene().audio.find(a=>a.id===t.dataset.id);if(a){a.volume=+t.value/100;scheduleSave();}}
   else if(t.dataset.sc==='bg'){scene().bg=t.value;requestRender();scheduleSave();}
 });
 PB.addEventListener('change',e=>{
@@ -2037,8 +2182,6 @@ PB.addEventListener('change',e=>{
     else if(f==='length'){pushUndo();setLength(sc,+t.value);}
     else if(f==='bg'){sc.bg=t.value;}
     afterEdit();if(t.type!=='color')renderPanel();else{const c=PB.querySelector('canvas[data-thumb="'+S.si+'"]');if(c){const x=c.getContext('2d');x.setTransform(c.width/W,0,0,c.height/H,0,0);drawScene(x,sc,0,{pool});}}refreshScenes();return;}
-  if(t.dataset.au==='start'){const a=sc.audio.find(a=>a.id===t.dataset.id);if(a){pushUndo();a.start=Math.max(0,+t.value||0);afterEdit();}return;}
-  if(t.dataset.au==='volume')return;
   if(t.dataset.ob){const o=selObj();const f=t.dataset.ob;
     if(f==='autoKey'){S.autoKey=t.checked;LS.set('autoKey2',S.autoKey);renderPanel();return;}
     if(!o)return;pushUndo();
@@ -2057,7 +2200,11 @@ PB.addEventListener('change',e=>{
 /* ---------- Aktionen ---------- */
 const A={
   home:showHome,undo,redo,
-  insImage:()=>pick('image/*',insertImageFiles,true),insVideo:()=>pick('video/*',insertVideoFile),insAudio:()=>pick('audio/*,.mp3,.m4a,.wav,.aac',insertAudioFile),
+  insImage:()=>pick('image/*',insertImageFiles,true),insVideo:()=>pick('video/*',insertVideoFile),insAudio:()=>pick('audio/*,.mp3,.m4a,.wav,.aac',insertAudioFiles,true),
+  mixToggle:()=>{mixOpen=!mixOpen;LS.set('mixOpen',mixOpen);renderMixer();},
+  trkMute:el=>{const a=findTrk(el.dataset.id);if(!a)return;pushUndo();a.mute=!a.mute;afterEdit();renderMixer();updateLiveGains();},
+  trkSolo:el=>{const a=findTrk(el.dataset.id);if(!a)return;pushUndo();a.solo=!a.solo;afterEdit();renderMixer();updateLiveGains();},
+  trkMore:el=>trackDialog(el.dataset.id),
   stylus:()=>{S.stylusOnly=!S.stylusOnly;LS.set('stylusOnly',S.stylusOnly);updateModeUI();toast(S.stylusOnly?'Nur Stift: Der Stift zeichnet, der Finger verschiebt.':'Finger und Stift zeichnen beide.');},
   export:openExport,panel:()=>{const app=$('#app');if(innerWidth<=1100)app.classList.toggle('showpanel');else app.classList.toggle('nopanel');setTimeout(()=>{resizeStage();resizeTl();},30);},
   fit:()=>{S.view={zoom:1,px:0,py:0};updateZoomHud();requestRender();},
@@ -2071,8 +2218,10 @@ const A={
   spSc:el=>{const c=el.dataset.v;S.shapeStrokeColor=c;LS.set('shapeStrokeColor',c);S.shapeStroke=true;LS.set('shapeStroke',true);renderShapePop();},
   shCol:el=>{const o=selObj();if(!o||o.type!=='shape')return;const k=el.dataset.k;pushUndo();o[k]=el.dataset.v;o[k+'On']=true;shapeDims(o);afterEdit();renderPanel();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
-  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}if(layerBlocked())return;const fr=curFrames(sc),prev=fr[S.frame-1];
-    if(!prev.length){toast('Frame '+S.frame+' ist auf dieser Ebene leer.');return;}pushUndo();fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev).map(x=>({...x,q:nextQ()})));afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert');},
+  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}const fr=curFrames(sc),prev=fr[S.frame-1],hasObj=sc.objects.some(o=>frameOnly(o,S.frame-1));
+    if(!prev.length&&!hasObj){toast('Frame '+S.frame+' ist leer.');return;}if(prev.length&&layerBlocked())return;pushUndo();
+    if(prev.length)fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev).map(x=>({...x,q:nextQ()})));const n=cloneFrameObjects(sc,S.frame-1,S.frame);
+    afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert'+(n?' (mit '+n+' Objekt'+(n===1?'':'en')+')':''));},
   color:el=>setColor(el.dataset.v),
   tab:el=>{S.tab=el.dataset.v;renderPanel();if(innerWidth<=1100)$('#app').classList.add('showpanel');},
   sceneGo:el=>switchScene(+el.dataset.i),
@@ -2085,7 +2234,7 @@ const A={
   bgc:el=>{pushUndo();scene().bg=el.dataset.v;afterEdit();renderPanel();},
   bgImage:()=>pick('image/*',async([f])=>{try{const id=await addAsset(f,'image');await assetUrl(id);pushUndo();scene().bgAsset=id;afterEdit();renderPanel();}catch(e){toast('Dieses Bild lässt sich nicht öffnen.');}}),
   bgClear:()=>{pushUndo();scene().bgAsset=null;afterEdit();renderPanel();},
-  audioDel:el=>{pushUndo();const sc=scene();sc.audio=sc.audio.filter(a=>a.id!==el.dataset.id);pool.pauseAll();afterEdit();renderPanel();},
+  audioDel:el=>{pushUndo();const sc=scene();sc.audio=sc.audio.filter(a=>a.id!==el.dataset.id);afterTrackEdit();},
   frameToObj:frameToObject,
   keyPrev:()=>{const o=selObj();if(!o)return;const k=[...o.keys].reverse().find(k=>k.f<S.frame);if(k)setFrame(k.f);},
   keyNext:()=>{const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f>S.frame);if(k)setFrame(k.f);},
@@ -2123,7 +2272,7 @@ const A={
   pathFrom:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();o.path={...o.path,f0:Math.min(S.frame,o.path.f1)};afterEdit();renderPanel();},
   pathTo:()=>{const o=selObj();if(!o||!o.path)return;pushUndo();o.path={...o.path,f1:Math.max(S.frame,o.path.f0)};afterEdit();renderPanel();},
   addMouth:()=>{const V=guessVisemes();if(!Object.keys(V).length){toast('Lege zuerst Münder im Inventar an.');return;}
-    const o=newObj('mouth','Mund',100,100,{visemes:V,cues:[]});mouthDims(o);addObject(o);toast('Mund eingefügt. Im Panel die Münder antippen.');},
+    const o=newObj('mouth','Mund',100,100,{visemes:V,cues:[],inF:0,outF:null});mouthDims(o);addObject(o);toast('Mund eingefügt. Im Panel die Münder antippen.');},
   cue:el=>{const o=selObj();if(!o||o.type!=='mouth')return;if(!S.playing||!play.cueUndo){pushUndo();if(S.playing)play.cueUndo=true;}setCue(o,S.frame,el.dataset.v);scheduleSave();drawTimeline();
     if(!S.playing){afterEdit();renderPanel();}else{document.querySelectorAll('.vis').forEach(b=>b.classList.toggle('on',b===el));}},
   cueDel:()=>{const o=selObj();if(!o||!o.cues)return;pushUndo();o.cues=o.cues.filter(c=>c.f!==S.frame);afterEdit();renderPanel();},
@@ -2170,7 +2319,7 @@ function moveZ(d){const o=selObj();if(!o)return;const sc=scene(),l=objLayer(sc,o
   const lo=d>0?g[t].max:(t>0?g[t-1].max:g[t].min-2),hi=d>0?(t+1<g.length?g[t+1].min:g[t].max+2):g[t].min;
   pushUndo();o.q=(lo+hi)/2;o.behind=false;afterEdit();renderPanel();toast(d>0?'Eins nach vorne':'Eins nach hinten');}
 function switchScene(i){if(S.playing)stopPlayback();pool.pauseAll();S.si=clamp(i,0,S.project.scenes.length-1);S.sel=null;S.multi=null;S.layerId=null;TL.sx=0;TL.sy=0;setFrame(0);refreshScenes();renderPanel();}
-function refreshScenes(){const sel=$('#sceneSel');sel.innerHTML=S.project.scenes.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join('');sel.value=S.si;}
+function refreshScenes(){const sel=$('#sceneSel');sel.innerHTML=S.project.scenes.map((s,i)=>`<option value="${i}">${esc(s.name)}</option>`).join('');sel.value=S.si;renderMixer();}
 $('#sceneSel').addEventListener('change',e=>switchScene(+e.target.value));
 
 /* ---------- Werkzeuge & Farbe ---------- */
@@ -2377,14 +2526,21 @@ function openExport(){
   d.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{d.querySelectorAll(`[data-x="${b.dataset.x}"]`).forEach(x=>x.classList.toggle('on',x===b));opt[b.dataset.x]=b.dataset.x==='range'?b.dataset.v:+b.dataset.v;});
   let job=null;
   d.querySelector('#ex-cancel').onclick=()=>{if(job)job.cancel();modal.dataset.lock='';closeModal();};
-  d.querySelector('#ex-go').onclick=e=>{e.currentTarget.disabled=true;modal.dataset.lock='1';job=runExport(opt,d);};
+  d.querySelector('#ex-go').onclick=async e=>{e.currentTarget.disabled=true;modal.dataset.lock='1';
+    // Tonkontext noch im Tipp anlegen (iPad), dann alle Tondateien fertig laden
+    let ectx=null;try{ectx=new(window.AudioContext||window.webkitAudioContext)();ectx.resume();}catch(x){ectx=null;}
+    const sc0=opt.range==='film'?S.project.scenes:[scene()];
+    await Promise.all(sc0.flatMap(s=>s.audio.map(a=>Promise.resolve(audioBuf(a.assetId)).catch(()=>null))));
+    job=runExport(opt,d,ectx);};
 }
-function runExport(opt,d){
+function runExport(opt,d,ectx){
   const scenes=opt.range==='film'?S.project.scenes:[scene()];
   const w=opt.res,h=Math.round(opt.res*9/16);const c=mkCanvas(w,h),x=c.getContext('2d');
   const stream=c.captureStream(opt.fps);
-  let actx=null,dest=null;
-  try{actx=new(window.AudioContext||window.webkitAudioContext)();dest=actx.createMediaStreamDestination();actx.resume();}catch(e){actx=null;}
+  let actx=ectx||null,dest=null,srcs=[];
+  try{if(actx)dest=actx.createMediaStreamDestination();}catch(e){actx=null;}
+  const sceneAudio=sc=>{if(!actx||!dest)return;for(const a of sc.audio){const b=readyBuf(a.assetId),v=trkGain(sc,a);if(!b||!v)continue;const n=playTrack(actx,dest,sc,a,b,0,actx.currentTime,v);if(n)srcs.push(n.src);}};
+  const stopAudio=()=>{for(const s of srcs){try{s.stop();}catch(e){}}srcs=[];};
   const ep=new MediaPool(el=>{if(actx){try{actx.createMediaElementSource(el).connect(dest);}catch(e){}}});
   primeMedia(ep,scenes);
   if(dest)dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
@@ -2401,14 +2557,14 @@ function runExport(opt,d){
     d.querySelector('#ex-go').hidden=true;};
   function step(now){
     if(cancelled)return;
-    if(!started){started=true;t0=now;rec.start(250);}
+    if(!started){started=true;t0=now;rec.start(250);sceneAudio(scenes[0]);}
     let sc=scenes[si],t=(now-t0)/1000;
-    if(t>=sc.length/sc.fps){ep.pauseAll();done+=sc.length/sc.fps;si++;if(si>=scenes.length){x.fillRect(0,0,0,0);setTimeout(()=>rec.stop(),120);fill.style.width='100%';return;}t0=now;t=0;sc=scenes[si];}
+    if(t>=sc.length/sc.fps){ep.pauseAll();stopAudio();done+=sc.length/sc.fps;si++;if(si>=scenes.length){x.fillRect(0,0,0,0);setTimeout(()=>rec.stop(),120);fill.style.width='100%';return;}t0=now;t=0;sc=scenes[si];sceneAudio(sc);}
     x.setTransform(w/W,0,0,h/H,0,0);drawScene(x,sc,t*sc.fps,{pool:ep});syncMedia(ep,sc,t,true);
     fill.style.width=((done+t)/total*100).toFixed(1)+'%';requestAnimationFrame(step);
   }
   setTimeout(()=>requestAnimationFrame(step),400);
-  return{cancel(){cancelled=true;try{rec.stop();}catch(e){}ep.clear();}};
+  return{cancel(){cancelled=true;stopAudio();try{rec.stop();}catch(e){}ep.clear();}};
 }
 
 /* Inventar-Zeichner */
@@ -2493,7 +2649,7 @@ function sampleProject(){
 
 /* ---------- Projekt öffnen ---------- */
 async function openProject(p){
-  if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();
+  if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();thumbs.clear();peaks.clear();
   S.project=p;S.si=0;S.sel=null;S.multi=null;S.layerId=null;p.scenes.forEach(layersOf);
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(!o.layer||!layersOf(sc).some(l=>l.id===o.layer))o.layer=objLayer(sc,o).id;});});
   if(p.seq==null){p.seq=0;p.scenes.forEach(sc=>sc.objects.forEach((o,i)=>{o.q=o.behind?-1000+i:++p.seq;}));}
@@ -2536,6 +2692,7 @@ async function init(){
   renderTools();updateModeUI();
   new ResizeObserver(()=>{resizeStage();}).observe($('#stageWrap'));
   new ResizeObserver(()=>{resizeTl();}).observe($('#tlWrap'));
+  new ResizeObserver(()=>{sizeLanes();drawTimeline();}).observe(mix);
   resizeStage();resizeTl();
   await DB.open();
   try{inventory=await DB.all('inventory');}catch(e){inventory=[];}
