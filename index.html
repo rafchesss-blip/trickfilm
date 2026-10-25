@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="25.10.2026 16:13">
+<meta name="tfs-version" content="25.10.2026 16:53">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -873,6 +873,40 @@ async function autoCues(o){
 }
 function setCue(o,F,v){o.cues=(o.cues||[]).filter(c=>c.f!==F).concat([{f:F,v}]).sort((a,b)=>a.f-b.f);}
 
+/* ---------- Verzerren (Form) für Fotos, Zeichnungen, Videos und Münder ---------- */
+// o.pts ist hier ein 3×3-Gitter in Objekt-Koordinaten (Zeile für Zeile, oben links zuerst)
+const WARPABLE=new Set(['image','drawing','video','mouth']);
+const isWarp=o=>WARPABLE.has(o.type);
+function warpRest(o){const p=[];for(let j=0;j<3;j++)for(let i=0;i<3;i++)p.push(r1((i-1)*o.w/2),r1((j-1)*o.h/2));return p;}
+function warpIsRest(o,p){const r=warpRest(o);for(let i=0;i<18;i++)if(Math.abs(p[i]-r[i])>0.5)return false;return true;}
+// Glatte Fläche durch alle 9 Punkte (quadratisch in beide Richtungen)
+const LQ=t=>[2*(t-.5)*(t-1),-4*t*(t-1),2*t*(t-.5)];
+function warpAt(p,u,v){const a=LQ(u),b=LQ(v);let x=0,y=0;for(let j=0;j<3;j++)for(let i=0;i<3;i++){const w=a[i]*b[j],k=(j*3+i)*2;x+=w*p[k];y+=w*p[k+1];}return{x,y};}
+let warpC=null;
+// Zeichnet src verzerrt: erst in eine eigene Leinwand (deckend, ohne Nähte), dann mit Deckkraft auf die Bühne
+function drawWarped(ctx,src,p,dw,dh,ow,oh){
+  const sx=dw/ow,sy=dh/oh,N=10,G=[];let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(let j=0;j<=N;j++)for(let i=0;i<=N;i++){const q=warpAt(p,i/N,j/N);q.x*=sx;q.y*=sy;G.push(q);x0=Math.min(x0,q.x);y0=Math.min(y0,q.y);x1=Math.max(x1,q.x);y1=Math.max(y1,q.y);}
+  const bw=x1-x0+4,bh=y1-y0+4,k=Math.min(1.5,2048/Math.max(bw,bh)),cw=Math.max(1,Math.ceil(bw*k)),ch=Math.max(1,Math.ceil(bh*k));
+  if(!warpC)warpC=mkCanvas(cw,ch);if(warpC.width!==cw||warpC.height!==ch){warpC.width=cw;warpC.height=ch;}
+  const c=warpC.getContext('2d');c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,cw,ch);
+  const iw=src.naturalWidth||src.videoWidth||src.width,ih=src.naturalHeight||src.videoHeight||src.height;
+  const tri=(s0,s1,s2,d0,d1,d2)=>{
+    // Ziel-Dreieck minimal vergrößern, damit keine Haarlinien zwischen den Stücken bleiben
+    const cx=(d0.x+d1.x+d2.x)/3,cy=(d0.y+d1.y+d2.y)/3,g=q=>{const dx=q.x-cx,dy=q.y-cy,l=Math.hypot(dx,dy)||1;return{x:q.x+dx/l*0.9/k,y:q.y+dy/l*0.9/k};};
+    const e0=g(d0),e1=g(d1),e2=g(d2);
+    const den=(s1.x-s0.x)*(s2.y-s0.y)-(s2.x-s0.x)*(s1.y-s0.y);if(Math.abs(den)<1e-9)return;
+    const a=((d1.x-d0.x)*(s2.y-s0.y)-(d2.x-d0.x)*(s1.y-s0.y))/den,b=((d1.y-d0.y)*(s2.y-s0.y)-(d2.y-d0.y)*(s1.y-s0.y))/den,
+      cc=((d2.x-d0.x)*(s1.x-s0.x)-(d1.x-d0.x)*(s2.x-s0.x))/den,d=((d2.y-d0.y)*(s1.x-s0.x)-(d1.y-d0.y)*(s2.x-s0.x))/den;
+    c.save();c.setTransform(k,0,0,k,(2-x0)*k,(2-y0)*k);c.beginPath();c.moveTo(e0.x,e0.y);c.lineTo(e1.x,e1.y);c.lineTo(e2.x,e2.y);c.closePath();c.clip();
+    c.transform(a,b,cc,d,d0.x-a*s0.x-cc*s0.y,d0.y-b*s0.x-d*s0.y);c.drawImage(src,0,0);c.restore();};
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const S0={x:i/N*iw,y:j/N*ih},S1={x:(i+1)/N*iw,y:j/N*ih},S2={x:i/N*iw,y:(j+1)/N*ih},S3={x:(i+1)/N*iw,y:(j+1)/N*ih};
+    const D0=G[j*(N+1)+i],D1=G[j*(N+1)+i+1],D2=G[(j+1)*(N+1)+i],D3=G[(j+1)*(N+1)+i+1];
+    tri(S0,S1,S2,D0,D1,D2);tri(S1,S3,S2,D1,D3,D2);}
+  ctx.drawImage(warpC,x0-2,y0-2,cw/k,ch/k);
+}
+
 /* ---------- Szene rendern ---------- */
 function drawCover(ctx,im,w,h){const iw=im.naturalWidth||im.videoWidth,ih=im.naturalHeight||im.videoHeight;const s=Math.max(w/iw,h/ih);ctx.drawImage(im,(w-iw*s)/2,(h-ih*s)/2,iw*s,ih*s);}
 let tintC=null;
@@ -897,7 +931,9 @@ function drawObj(ctx,o,sc,ft,fi,opt,memo){
     tx.globalCompositeOperation='source-over';tx.globalAlpha=1;src=tintC;
   }
   ctx.save();ctx.transform(M[0],M[1],M[2],M[3],M[4],M[5]);ctx.globalAlpha=clamp(st.o,0,1)*(opt.lop??1);
-  if(src)ctx.drawImage(src,-dw/2,-dh/2,dw,dh);
+  const wp=isWarp(o)&&(st.pts||o.pts);
+  if(src&&wp&&wp.length===18&&!warpIsRest(o,wp))drawWarped(ctx,src,wp,dw,dh,o.w,o.h);
+  else if(src)ctx.drawImage(src,-dw/2,-dh/2,dw,dh);
   else if(opt.ui){ctx.fillStyle='rgba(120,140,160,.25)';ctx.fillRect(-dw/2,-dh/2,dw,dh);}
   ctx.restore();
 }
@@ -1153,7 +1189,7 @@ function shapeBounds(o,pts=o.pts){
   return{x0,y0,x1,y1};
 }
 // Punkte um die Mitte legen, ohne dass sich etwas sichtbar bewegt
-function shapeDims(o){
+function shapeDims(o){if(o.type!=='shape')return;
   const pad=(o.strokeOn?o.sw:0)+4;
   if(o.morph){let m={x:1,y:1};for(const P of [o.pts,...o.keys.map(k=>k.pts).filter(Boolean)]){const b=shapeBounds(o,P);m.x=Math.max(m.x,-b.x0,b.x1);m.y=Math.max(m.y,-b.y0,b.y1);}
     o.w=m.x*2+pad;o.h=m.y*2+pad;return;}
@@ -1259,14 +1295,14 @@ function shapeEdgeAt(o,x,y,maxD){
 }
 function shapeScreenSize(o,max){const h=handles(o),p=h.poly,a=Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),b=Math.hypot(p[3].x-p[0].x,p[3].y-p[0].y);return max?Math.max(a,b):Math.min(a,b);}
 // Wie nah man an Punkt bzw. Rand sein muss. Ziehen in der Fläche oder am Rand verschiebt immer die ganze Form.
-function ptTol(e,o){const big=shapeScreenSize(o,true);return big<40?0:e.pointerType==='mouse'?10:(big<110?12:16);}
+function ptTol(e,o){const big=shapeScreenSize(o,true);return big<(isWarp(o)?24:40)?0:e.pointerType==='mouse'?10:(big<110?12:16);}
 function edgeTol(e,o){const big=o.closed?shapeScreenSize(o):shapeScreenSize(o,true);return big<(o.closed?70:60)?0:e.pointerType==='mouse'?8:14;}
 function editPtsAll(o,fn){o.pts=fn(o.pts);for(const k of o.keys)if(k.pts)k.pts=fn(k.pts);}
 let lastPtTap={id:null,i:-1,t:0};
 // Formen, deren Punkte man gerade ziehen kann: die ausgewählte Form oder alle Formen einer ausgewählten Gruppe (oben zuerst)
-function editableShapes(){const o=selObj();if(!o)return[];if(o.type==='shape')return[o];if(o.type!=='group')return[];
+function editableShapes(){const o=selObj();if(!o)return[];if(o.type==='shape'||isWarp(o)&&o.morph&&o.pts)return[o];if(o.type!=='group')return[];
   const sc=scene(),mine=new Set(descendants(sc,o).map(x=>x.id));
-  return objectsInOrder(sc).reverse().filter(x=>mine.has(x.id)&&x.type==='shape'&&objVisible(x,S.frame)&&objLayer(sc,x).visible&&!objLayer(sc,x).locked);}
+  return objectsInOrder(sc).reverse().filter(x=>mine.has(x.id)&&(x.type==='shape'||isWarp(x)&&x.morph&&x.pts)&&objVisible(x,S.frame)&&objLayer(sc,x).visible&&!objLayer(sc,x).locked);}
 function hitShapePoint(e,w){for(const o of editableShapes())if(hitShapePointFor(o,e,w))return true;return false;}
 function hitShapePointFor(o,e,w){
   if(!objVisible(o,S.frame))return false;
@@ -1274,11 +1310,12 @@ function hitShapePointFor(o,e,w){
   let best=-1,bd=ptTol(e,o);scr.forEach((p,i)=>{const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=i;}});
   if(best>=0){
     const now=performance.now(),n=o.pts.length/2;
-    if(lastPtTap.id===o.id&&lastPtTap.i===best&&now-lastPtTap.t<380&&n>(o.closed?3:2)){
+    if(o.type==='shape'&&lastPtTap.id===o.id&&lastPtTap.i===best&&now-lastPtTap.t<380&&n>(o.closed?3:2)){
       pushUndo();editPtsAll(o,p=>{const q=p.slice();q.splice(best*2,2);return q;});if(o.sharp){o.sharp=o.sharp.slice();o.sharp.splice(best,1);}shapeDims(o);lastPtTap={id:null,i:-1,t:0};hoverPlus=null;afterEdit();toast('Punkt entfernt');return true;}
     lastPtTap={id:o.id,i:best,t:now};
     G={kind:'pt',id:e.pointerId,o,i:best,pushed:false,s0:{x,y}};return true;
   }
+  if(o.type!=='shape')return false;
   const et=edgeTol(e,o),hit=et?shapeEdgeAt(o,x,y,et):null;
   if(hit){G={kind:'edge',id:e.pointerId,o,hit,w0:w,s0:{x,y}};return true;}
   return false;
@@ -1305,6 +1342,9 @@ function movePt(e){
 }
 function drawShapeHandles(o){
   const {scr}=shapeScreenPts(o),ctx=sctx;ctx.save();
+  if(isWarp(o)){ctx.strokeStyle=T.accent;ctx.lineWidth=1.5;ctx.setLineDash([5,4]);ctx.beginPath();
+    for(let j=0;j<3;j++){ctx.moveTo(scr[j*3].x,scr[j*3].y);ctx.lineTo(scr[j*3+1].x,scr[j*3+1].y);ctx.lineTo(scr[j*3+2].x,scr[j*3+2].y);}
+    for(let i=0;i<3;i++){ctx.moveTo(scr[i].x,scr[i].y);ctx.lineTo(scr[3+i].x,scr[3+i].y);ctx.lineTo(scr[6+i].x,scr[6+i].y);}ctx.stroke();ctx.setLineDash([]);}
   ctx.lineWidth=2.5;ctx.strokeStyle=T.accent;
   const rr=scr.length>24?5.5:7.5;
   scr.forEach((p,i)=>{ctx.beginPath();if(o.sharp&&o.sharp[i])ctx.rect(p.x-rr,p.y-rr,rr*2,rr*2);else ctx.arc(p.x,p.y,rr,0,Math.PI*2);ctx.fillStyle='#ffffff';ctx.fill();ctx.stroke();});
@@ -1316,7 +1356,7 @@ function updateHoverPlus(e){
   let hp=null;
   if(!S.camEdit&&!S.pathFor&&(['select','shape'].includes(S.tool)||(S.stylusOnly&&e.pointerType!=='pen'))){
     const r=stage.getBoundingClientRect();
-    for(const o of editableShapes()){const et=edgeTol(e,o),h=et?shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,et):null;if(h){hp={id:o.id,x:h.x,y:h.y};break;}}}
+    for(const o of editableShapes()){if(o.type!=='shape')continue;const et=edgeTol(e,o),h=et?shapeEdgeAt(o,e.clientX-r.left,e.clientY-r.top,et):null;if(h){hp={id:o.id,x:h.x,y:h.y};break;}}}
   if(JSON.stringify(hp)!==JSON.stringify(hoverPlus)){hoverPlus=hp;requestRender();}
 }
 // Formen-Werkzeug zeichnet immer eine neue Form (verschoben wird mit dem Auswahl-Werkzeug)
@@ -2082,7 +2122,9 @@ function panelObj(){
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
-    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${o.type==='shape'||isWarp(o)?`<button class="chip ${o.morph?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    ${isWarp(o)&&o.morph?`<p class="hint"><strong>Form ist an:</strong> Ziehe die 9 weißen Punkte auf der Bühne, um das Objekt zu verbiegen, zu stauchen oder zu strecken. Auf einem anderen Frame neu ziehen: Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt es sich fließend.</p>`:''}
+    ${isWarp(o)&&o.pts?`<div class="btns"><button class="btn sm" data-a="warpReset">Form zurücksetzen</button></div>`:''}
     <p class="hint">Nur eingeschaltete Dinge ändern sich von Keyframe zu Keyframe. Alles andere ist in jedem Frame gleich, egal auf welchem Frame du es änderst.</p>
     <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: beim Verschieben automatisch Keyframes setzen</label>
     <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
@@ -2285,8 +2327,9 @@ const A={
   tint:el=>{const o=selObj();if(!o)return;pushUndo();const E=beginEdit(o,S.frame,['tint']);const vals={tc:el.dataset.v};if(E.base.ta<0.004)vals.ta=0.5;applyVals(E,vals);afterEdit();renderPanel();},
   objFlip:()=>{const o=selObj();if(!o)return;pushUndo();o.flip=!o.flip;afterEdit();renderPanel();},
   objToInv:()=>{const o=selObj();if(o&&o.type==='group'){toast('Gruppen können nicht ins Inventar. Löse die Gruppe auf und speichere die Teile einzeln.');return;}if(o&&o.type==='mouth'){toast('Lippensync-Münder bleiben im Projekt. Die einzelnen Münder liegen schon im Inventar.');return;}invFromObject();},
+  warpReset:()=>{const o=selObj();if(!o||!isWarp(o))return;pushUndo();if(o.morph)o.pts=warpRest(o);else delete o.pts;o.keys.forEach(k=>delete k.pts);afterEdit();renderPanel();toast('Form zurückgesetzt');},
   animTog:el=>{const o=selObj();if(!o)return;const g=el.dataset.v;pushUndo();let on;
-    if(g==='form'){on=!o.morph;if(on)o.morph=true;else{const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}shapeDims(o);}
+    if(g==='form'){on=!o.morph;if(on){o.morph=true;if(isWarp(o)&&(!o.pts||o.pts.length!==18))o.pts=warpRest(o);if(S.tool!=='select')setTool('select');}else{const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}shapeDims(o);}
     else{const F={...animFlags(o)};on=!F[g];
       if(!on){const st=objState(o,S.frame);const keys={pos:['x','y'],s:['s'],r:['r'],o:['o'],tint:['tc','ta']}[g];o.keys.forEach(k=>keys.forEach(f=>{k[f]=st[f];}));}
       F[g]=on;o.anim=F;}
