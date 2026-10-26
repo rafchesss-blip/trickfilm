@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="25.10.2026 17:16">
+<meta name="tfs-version" content="26.10.2026 16:17">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -1266,7 +1266,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
+    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},morph:true,keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   if(kind==='free'&&sharpPts&&sharpPts.some(Boolean))o.sharp=sharpPts;
   shapeDims(o);return o;
 }
@@ -1348,6 +1348,8 @@ function movePt(e){
   const r=stage.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   if(!G.pushed){if(Math.hypot(x-G.s0.x,y-G.s0.y)<3)return;pushUndo();G.pushed=true;}
   const o=G.o,l=toLocal(o,toWorld(e.clientX,e.clientY)),i=G.i;
+  // Punkte ziehen ändert die Form nur auf diesem Frame: „Form“ wird dafür automatisch eingeschaltet
+  if(!o.morph&&o.type==='shape'&&(o.keys.length||S.frame!==(o.inF||0))){setMorph(o,true);renderPanel();}
   if(o.morph){
     // Form ist an: Die neue Form gilt nur für diesen Frame (Form-Keyframe), dazwischen verwandelt sie sich
     if(!o.keys.length){const fs=[...parentKeyFrames(o),o.inF||0].filter(f=>f!==S.frame);
