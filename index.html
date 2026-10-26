@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="26.10.2026 16:31">
+<meta name="tfs-version" content="26.10.2026 16:37">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -2330,10 +2330,17 @@ const A={
   spSc:el=>{const c=el.dataset.v;S.shapeStrokeColor=c;LS.set('shapeStrokeColor',c);S.shapeStroke=true;LS.set('shapeStroke',true);renderShapePop();},
   shCol:el=>{const o=selObj();if(!o||o.type!=='shape')return;const k=el.dataset.k;pushUndo();o[k]=el.dataset.v;o[k+'On']=true;shapeDims(o);afterEdit();renderPanel();},
   shSmooth:()=>{const o=selObj();if(!o||o.type!=='shape')return;pushUndo();o.smooth=!o.smooth;shapeDims(o);afterEdit();renderPanel();},
-  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}const fr=curFrames(sc),prev=fr[S.frame-1],hasObj=sc.objects.some(o=>frameOnly(o,S.frame-1));
-    if(!prev.length&&!hasObj){toast('Frame '+S.frame+' ist leer.');return;}if(prev.length&&layerBlocked())return;pushUndo();
-    if(prev.length)fr[S.frame]=fr[S.frame].concat(flattenStrokes(prev).map(x=>({...x,q:nextQ()})));const n=cloneFrameObjects(sc,S.frame-1,S.frame);
-    afterEdit();toast('Frame '+S.frame+' auf Frame '+(S.frame+1)+' kopiert'+(n?' (mit '+n+' Objekt'+(n===1?'':'en')+')':''));},
+  prevCopy:()=>{const sc=scene();if(S.frame===0){toast('Vor Frame 1 gibt es keinen Frame.');return;}const A=S.frame-1,B=S.frame;
+    // Alle sichtbaren, nicht gesperrten Ebenen: Striche, Objekte nur auf dem Frame davor und Formen, die nur auf dem Frame davor geändert sind
+    const ls=layersOf(sc).filter(l=>l.visible&&!l.locked&&l.frames[A]&&l.frames[A].length),
+      fo=sc.objects.filter(o=>!frameOnly(o,A)&&o.fpts&&o.fpts[A]&&objVisible(o,B)),hasObj=sc.objects.some(o=>frameOnly(o,A));
+    if(!ls.length&&!fo.length&&!hasObj){const any=layersOf(sc).some(l=>l.frames[A]&&l.frames[A].length);
+      toast(any?'Was auf Frame '+(A+1)+' gezeichnet ist, liegt auf einer gesperrten oder ausgeblendeten Ebene.':sc.objects.some(o=>objVisible(o,A))?'Die Objekte von Frame '+(A+1)+' sind auf diesem Frame schon da.':'Frame '+(A+1)+' ist leer.');return;}
+    pushUndo();
+    for(const l of ls)l.frames[B]=l.frames[B].concat(flattenStrokes(l.frames[A]).map(x=>({...x,q:nextQ()})));
+    for(const o of fo){o.fpts={...o.fpts,[B]:o.fpts[A].slice()};shapeDims(o);}
+    const n=cloneFrameObjects(sc,A,B)+fo.length;
+    afterEdit();toast('Frame '+(A+1)+' auf Frame '+(B+1)+' kopiert'+(n?' (mit '+n+' Objekt'+(n===1?'':'en')+')':''));},
   color:el=>setColor(el.dataset.v),
   tab:el=>{S.tab=el.dataset.v;renderPanel();if(innerWidth<=1100)$('#app').classList.add('showpanel');},
   sceneGo:el=>switchScene(+el.dataset.i),
