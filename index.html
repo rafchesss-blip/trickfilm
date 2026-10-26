@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="26.10.2026 16:44">
+<meta name="tfs-version" content="26.10.2026 16:47">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -2421,11 +2421,16 @@ const A={
         if(x===o){c.name=o.name+' 2';c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}}sc.objects.push(c);}
       select(map[o.id]);afterEdit();toast('Gruppe kopiert');return;}
     const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}c.q=nextQ();addObject(c);},
-  objDel:()=>{const ms=multiObjs();if(ms.length>1){pushUndo();const sc=scene(),ids=new Set(ms.map(o=>o.id));
-    sc.objects.filter(c=>c.parent&&ids.has(c.parent)&&!ids.has(c.id)).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>!ids.has(x.id));S.multi=null;afterEdit();renderPanel();toast(ms.length+' Objekte gelöscht. Rückgängig holt sie zurück.');return;}
-    const o=selObj();if(!o)return;pushUndo();const sc=scene();
-    if(o.type==='group'){const gone=new Set([o.id,...descendants(sc,o).map(x=>x.id)]);sc.objects=sc.objects.filter(x=>!gone.has(x.id));S.sel=null;afterEdit();renderPanel();toast('Gruppe gelöscht. Rückgängig holt sie zurück.');return;}
-    sc.objects.filter(c=>c.parent===o.id).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>x!==o);S.sel=null;afterEdit();renderPanel();toast('„'+o.name+'“ gelöscht. Rückgängig holt es zurück.');},
+  objDel:()=>{const ms=multiObjs(),sc=scene(),F=S.frame;
+    const list=ms.length>1?ms:selObj()?[selObj()]:[];if(!list.length)return;
+    // Gelöscht wird ab diesem Frame: auf den Frames davor bleibt das Objekt. Beginnt es erst hier, ist es ganz weg.
+    const all=new Set();for(const o of list){all.add(o);if(o.type==='group')descendants(sc,o).forEach(x=>all.add(x));}
+    const gone=new Set([...all].filter(x=>(x.inF||0)>=F).map(x=>x.id));pushUndo();
+    for(const x of all)if(!gone.has(x.id)){x.outF=x.outF==null?F-1:Math.min(x.outF,F-1);if(x.hide)x.hide=x.hide.filter(f=>f<F);}
+    sc.objects.filter(c=>c.parent&&gone.has(c.parent)&&!gone.has(c.id)).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>!gone.has(x.id));
+    S.sel=null;S.multi=null;afterEdit();renderPanel();
+    const nm=list.length>1?list.length+' Objekte':'„'+list[0].name+'“';
+    toast(gone.size===all.size?nm+' gelöscht. Rückgängig holt es zurück.':nm+' ab Frame '+(F+1)+' gelöscht. Davor bleibt es.');},
   invDraw:()=>openEditor(null),invPhoto:()=>pick('image/*',invFromPhoto,true),invFrame:invFromFrame,
   invCat:el=>{S.invCat=el.dataset.v;renderPanel();},
   invSel:el=>{S.invSel=S.invSel===el.dataset.id?null:el.dataset.id;renderPanel();},
