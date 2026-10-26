@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="26.10.2026 16:17">
+<meta name="tfs-version" content="26.10.2026 16:31">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -695,6 +695,8 @@ function objState(o,ft){
     st={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,s:a.s+(b.s-a.s)*u,r:a.r+(b.r-a.r)*u,o:a.o+(b.o-a.o)*u,tc,ta:a.ta+(b.ta-a.ta)*u};
     if(o.morph)st.pts=lerpPts(keyPts(o,i),keyPts(o,i+1),u);
   }
+  // Einzelne Frames mit eigener Form (ohne Keyframe)
+  if(o.fpts){const fp=o.fpts[Math.floor(ft+1e-6)];if(fp)st.pts=fp;}
   if(k.length>1){const F=animFlags(o),k0=k[0];if(!F.pos){st.x=k0.x;st.y=k0.y;}if(!F.s)st.s=k0.s;if(!F.r)st.r=k0.r;if(!F.o)st.o=k0.o;if(!F.tint){st.tc=k0.tc||TINT0;st.ta=k0.ta||0;}}
   if(o.path&&o.path.pts&&o.path.pts.length>=4){const p=pathAt(o.path.pts,pathU(o.path,ft));st.x=p.x;st.y=p.y;if(o.path.orient)st.r+=p.ang;}
   return st;
@@ -890,7 +892,7 @@ function warpAt(p,u,v){const a=LQ(u),b=LQ(v);let x=0,y=0;for(let j=0;j<3;j++)for
 function morphables(o){if(o.type==='group')return descendants(scene(),o).filter(x=>x.type==='shape'||isWarp(x));return o.type==='shape'||isWarp(o)?[o]:[];}
 function setMorph(o,on){
   if(on){o.morph=true;if(isWarp(o)&&(!o.pts||o.pts.length!==18))o.pts=warpRest(o);}
-  else if(o.morph){const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}
+  else if(o.morph){const fp=o.fpts;o.fpts=null;const cur=objState(o,S.frame).pts;o.fpts=fp;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}
   shapeDims(o);}
 // Hat das Objekt oder eine Gruppe darüber auf diesem Frame einen Keyframe?
 function keyHere(o,F){const sc=scene();for(let p=o,n=0;p&&n<50;p=findObj(sc,p.parent),n++)if(p.keys.some(k=>k.f===F))return true;return false;}
@@ -1205,7 +1207,7 @@ function shapeBounds(o,pts=o.pts){
 // Punkte um die Mitte legen, ohne dass sich etwas sichtbar bewegt
 function shapeDims(o){if(o.type!=='shape')return;
   const pad=(o.strokeOn?o.sw:0)+4;
-  if(o.morph){let m={x:1,y:1};for(const P of [o.pts,...o.keys.map(k=>k.pts).filter(Boolean)]){const b=shapeBounds(o,P);m.x=Math.max(m.x,-b.x0,b.x1);m.y=Math.max(m.y,-b.y0,b.y1);}
+  if(o.morph||o.fpts){let m={x:1,y:1};for(const P of [o.pts,...o.keys.map(k=>k.pts).filter(Boolean),...Object.values(o.fpts||{})]){const b=shapeBounds(o,P);m.x=Math.max(m.x,-b.x0,b.x1);m.y=Math.max(m.y,-b.y0,b.y1);}
     o.w=m.x*2+pad;o.h=m.y*2+pad;return;}
   const b=shapeBounds(o),cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;
   if(Math.abs(cx)>0.01||Math.abs(cy)>0.01){
@@ -1266,7 +1268,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},morph:true,keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
+    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   if(kind==='free'&&sharpPts&&sharpPts.some(Boolean))o.sharp=sharpPts;
   shapeDims(o);return o;
 }
@@ -1311,7 +1313,7 @@ function shapeScreenSize(o,max){const h=handles(o),p=h.poly,a=Math.hypot(p[1].x-
 // Wie nah man an Punkt bzw. Rand sein muss. Ziehen in der Fläche oder am Rand verschiebt immer die ganze Form.
 function ptTol(e,o){const big=shapeScreenSize(o,true);return big<(isWarp(o)?24:40)?0:e.pointerType==='mouse'?10:(big<110?12:16);}
 function edgeTol(e,o){const big=o.closed?shapeScreenSize(o):shapeScreenSize(o,true);return big<(o.closed?70:60)?0:e.pointerType==='mouse'?8:14;}
-function editPtsAll(o,fn){o.pts=fn(o.pts);for(const k of o.keys)if(k.pts)k.pts=fn(k.pts);}
+function editPtsAll(o,fn){o.pts=fn(o.pts);for(const k of o.keys)if(k.pts)k.pts=fn(k.pts);if(o.fpts)for(const f in o.fpts)o.fpts[f]=fn(o.fpts[f]);}
 let lastPtTap={id:null,i:-1,t:0};
 // Formen, deren Punkte man gerade ziehen kann: die ausgewählte Form oder alle Formen einer ausgewählten Gruppe (oben zuerst)
 function editableShapes(){const o=selObj();if(!o)return[];if(o.type==='shape'||isWarp(o)&&o.morph&&o.pts)return[o];if(o.type!=='group')return[];
@@ -1341,6 +1343,7 @@ function insertEdgePt(o,hit){
     // Auf der sichtbaren Kurve liegt der neue Punkt genau unter dem Finger
     const q=o.pts.slice();q[(hit.i+1)*2]=r1(hit.lx);q[(hit.i+1)*2+1]=r1(hit.ly);o.pts=q;
     if(o.morph){const k=o.keys.find(k=>k.f===S.frame);if(k&&k.pts){const z=k.pts.slice();z[(hit.i+1)*2]=r1(hit.lx);z[(hit.i+1)*2+1]=r1(hit.ly);k.pts=z;}}
+    if(o.fpts&&o.fpts[S.frame]){const z=o.fpts[S.frame].slice();z[(hit.i+1)*2]=r1(hit.lx);z[(hit.i+1)*2+1]=r1(hit.ly);o.fpts[S.frame]=z;}
     hoverPlus=null;shapeDims(o);afterEdit();toast('Punkt eingefügt');
   }
 }
@@ -1348,15 +1351,19 @@ function movePt(e){
   const r=stage.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   if(!G.pushed){if(Math.hypot(x-G.s0.x,y-G.s0.y)<3)return;pushUndo();G.pushed=true;}
   const o=G.o,l=toLocal(o,toWorld(e.clientX,e.clientY)),i=G.i;
-  // Punkte ziehen ändert die Form nur auf diesem Frame: „Form“ wird dafür automatisch eingeschaltet
-  if(!o.morph&&o.type==='shape'&&(o.keys.length||S.frame!==(o.inF||0))){setMorph(o,true);renderPanel();}
-  if(o.morph){
-    // Form ist an: Die neue Form gilt nur für diesen Frame (Form-Keyframe), dazwischen verwandelt sie sich
-    if(!o.keys.length){const fs=[...parentKeyFrames(o),o.inF||0].filter(f=>f!==S.frame);
-      if(fs.length){const a=fs.reduce((b,f)=>Math.abs(f-S.frame)<Math.abs(b-S.frame)?f:b);keyAt(o,a,true);}}
-    const had=o.keys.some(k=>k.f===S.frame),k=keyAt(o,S.frame,true);const p=(k.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;
-    if(!had&&!G.told){G.told=true;toast('Form-Keyframe auf Frame '+(S.frame+1));}
-  }else{const p=o.pts.slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.pts=p;}
+  const F=S.frame,k=o.keys.find(k=>k.f===F);
+  if(k&&o.type==='shape'){
+    // Auf einem Keyframe: die Form dieses Keyframes ändern, dazwischen verwandelt sie sich
+    if(!o.morph)setMorph(o,true);
+    const p=(k.pts||keyPts(o,o.keys.indexOf(k))||o.pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);k.pts=p;
+    if(o.fpts)delete o.fpts[F];
+  }else if(o.type==='shape'&&(o.keys.length||F!==(o.inF||0))){
+    // Zwischen Keyframes: die Änderung gilt nur für genau diesen Frame, es entsteht kein Keyframe
+    const p=(objState(o,F).pts||o.pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.fpts={...(o.fpts||{}),[F]:p};
+    if(!G.told){G.told=true;toast('Form nur auf Frame '+(F+1)+' geändert');}
+  }else if(o.morph&&!o.keys.length){const p=o.pts.slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.pts=p;}
+  else if(o.morph){const kk=keyAt(o,F,true);const p=(kk.pts||objState(o,S.ft).pts).slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);kk.pts=p;}
+  else{const p=o.pts.slice();p[i*2]=r1(l.x);p[i*2+1]=r1(l.y);o.pts=p;}
   shapeDims(o);requestRender();
 }
 function drawShapeHandles(o){
@@ -1734,6 +1741,7 @@ function shiftTime(sc,from,d){
     if(o.path)o.path={...o.path,f0:o.path.f0>from?Math.max(0,o.path.f0+d):o.path.f0,f1:o.path.f1>=from+(d>0?1:0)?Math.max(0,o.path.f1+d):o.path.f1};
     if(o.cues)o.cues=o.cues.filter(c=>!(d<0&&c.f===from)).map(c=>c.f>from?{...c,f:c.f+d}:c);
     if(o.hide)o.hide=o.hide.filter(f=>!(d<0&&f===from)).map(f=>f>from?f+d:f);
+    if(o.fpts){const n={};for(const f in o.fpts){const v=+f;if(d<0&&v===from)continue;n[v>from?v+d:v]=o.fpts[f];}o.fpts=n;}
   }
   if(sc.cam&&sc.cam.keys.length){if(d<0&&sc.cam.keys.length>1)sc.cam.keys=sc.cam.keys.filter(k=>k.f!==from);sc.cam.keys.forEach(k=>{if(k.f>from)k.f+=d;});}
 }
@@ -2274,7 +2282,7 @@ PB.addEventListener('change',e=>{
   if(t.dataset.vis){const o=selObj();if(!o)return;pushUndo();const V={...(o.visemes||{})};const it=inventory.find(i=>i.id===t.value);
     if(it)V[t.dataset.vis]=visFromItem(it);else delete V[t.dataset.vis];o.visemes=V;mouthDims(o);afterEdit();renderPanel();return;}
   if(t.dataset.sh==='morph'){const o=selObj();if(!o)return;pushUndo();
-    if(t.checked)o.morph=true;else{const cur=objState(o,S.frame).pts;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}
+    if(t.checked)o.morph=true;else{const fp=o.fpts;o.fpts=null;const cur=objState(o,S.frame).pts;o.fpts=fp;o.morph=false;if(cur)o.pts=cur.map(r1);o.keys.forEach(k=>delete k.pts);}
     shapeDims(o);afterEdit();renderPanel();return;}
   if(t.dataset.sh){const o=selObj();if(!o)return;
     if(t.type==='checkbox'){pushUndo();o[t.dataset.sh]=t.checked;shapeDims(o);}
