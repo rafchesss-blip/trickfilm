@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="26.10.2026 16:37">
+<meta name="tfs-version" content="26.10.2026 16:44">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -689,7 +689,8 @@ function objState(o,ft){
   else if(ft<=k[0].f){st=fullKey(k[0]);if(o.morph)st.pts=keyPts(o,0);}
   else if(ft>=k[k.length-1].f){st=fullKey(k[k.length-1]);if(o.morph)st.pts=keyPts(o,k.length-1);}
   else{
-    const i=segIndex(k,ft),a=fullKey(k[i]),b=fullKey(k[i+1]),u=(EASE[k[i].e]||EASE.linear)((ft-k[i].f)/(k[i+1].f-k[i].f));
+    // k.brk: neue Bewegung – bis zu diesem Keyframe bleibt alles wie beim Keyframe davor
+    const i=segIndex(k,ft),a=fullKey(k[i]),b=fullKey(k[i+1]),u=k[i+1].brk?0:(EASE[k[i].e]||EASE.linear)((ft-k[i].f)/(k[i+1].f-k[i].f));
     // Ist eine Seite ungetönt, bleibt die Farbe stehen und nur die Stärke ändert sich
     const tc=a.ta<0.004?b.tc:b.ta<0.004?a.tc:lerpHex(a.tc,b.tc,u);
     st={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,s:a.s+(b.s-a.s)*u,r:a.r+(b.r-a.r)*u,o:a.o+(b.o-a.o)*u,tc,ta:a.ta+(b.ta-a.ta)*u};
@@ -711,6 +712,8 @@ function keyAt(o,F,create){
     k={f:F,x:st.x,y:st.y,s:st.s,r:st.r,o:st.o,tc:st.tc,ta:st.ta,e:pk?pk.e:'linear'};
     if(o.path){const np=objStateNoPath(o,F);k.x=np.x;k.y=np.y;k.r=np.r;}
     if(o.morph&&st.pts)k.pts=st.pts.map(r1);
+    // Hinter einer fertigen Bewegung (2+ Keyframes) beginnt eine neue Bewegung, sie wird nicht mit der alten verbunden
+    if(o.keys.length>=2&&F>o.keys[o.keys.length-1].f)k.brk=true;
     o.keys.push(k);o.keys.sort((a,b)=>a.f-b.f);}
   return k||null;
 }
@@ -1841,7 +1844,7 @@ function paintTimeline(){
     if(K.o&&K.o.type==='group'){const own=new Set(K.keys.map(k=>k.f)),fk=new Set();morphables(K.o).forEach(x=>x.keys.forEach(k=>{if(k.pts&&!own.has(k.f))fk.add(k.f);}));
       c.strokeStyle=T.key;c.lineWidth=1.5;c.fillStyle=T.raised;for(const f of fk){diamond(c,X(f)+CW/2,ky,4.5);c.fill();c.stroke();}}
     const ks=K.keys;c.strokeStyle=T.key;c.lineWidth=2;
-    for(let k=0;k<ks.length-1;k++){c.beginPath();c.moveTo(X(ks[k].f)+CW/2,ky);c.lineTo(X(ks[k+1].f)+CW/2,ky);c.stroke();}
+    for(let k=0;k<ks.length-1;k++){if(ks[k+1].brk)continue;c.beginPath();c.moveTo(X(ks[k].f)+CW/2,ky);c.lineTo(X(ks[k+1].f)+CW/2,ky);c.stroke();}
     for(const k of ks){c.fillStyle=T.key;diamond(c,X(k.f)+CW/2,ky,k.f===S.frame?7:5.5);if(TL.drag&&TL.drag.k===k){c.strokeStyle=T.fg;c.lineWidth=1.5;c.stroke();}}
   }
   // Lineal
@@ -2004,7 +2007,7 @@ mix.addEventListener('wheel',e=>{if(!e.target.closest('canvas[data-lane]')||Math
 
 /* ---------- Auswahl & Keyframe-Aktionen ---------- */
 function select(id,keepTab){if(id!==S.sel)S.pivotEdit=false;S.multi=null;S.sel=id;if(id&&!keepTab&&S.tab!=='inv')S.tab='obj';if(id&&keepTab&&S.tab==='scene')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();}
-function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();const was=objVisible(o,S.frame);extendVisible(o,S.frame);keyAt(o,S.frame,true);if(!was)toast('„'+o.name+'“ ist jetzt bis Frame '+(S.frame+1)+' sichtbar');afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1));}
+function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();const was=objVisible(o,S.frame);extendVisible(o,S.frame);const nk=keyAt(o,S.frame,true);if(!was)toast('„'+o.name+'“ ist jetzt bis Frame '+(S.frame+1)+' sichtbar');afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1)+(nk&&nk.brk?': neue Bewegung':''));}
 function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){pushUndo();o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];afterEdit();renderPanel();toast('Keyframe gelöscht. Das Objekt bleibt so stehen.');return;}
   pushUndo();o.keys=o.keys.filter(x=>x!==k);afterEdit();renderPanel();}
 
@@ -2150,6 +2153,7 @@ function panelObj(){
     ${objVisible(o,S.frame)?'':`<p class="hint"><strong>Auf diesem Frame nicht sichtbar.</strong> „Keyframe setzen“ macht es bis hierher sichtbar, oder unten unter „Sichtbar“ einstellen.</p>`}
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
+    ${k&&o.keys.indexOf(k)>0?`<label class="check"><input id="ob-brk" type="checkbox" data-ob="keyBrk" ${k.brk?'checked':''}>Neue Bewegung: nicht mit dem Keyframe davor verbinden (bis hier bleibt es stehen)</label>`:''}
     <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
     <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${morphables(o).length?`<button class="chip ${morphables(o).every(x=>x.morph)?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
     ${o.type==='group'&&morphables(o).length&&morphables(o).every(x=>x.morph)?`<p class="hint"><strong>Form ist an:</strong> Ziehe die weißen Punkte der Teile. Die neue Form gilt nur für diesen Frame (es entsteht ein Form-Keyframe), dazwischen verwandelt sie sich fließend. Die Form auf dem Start-Frame bleibt erhalten.</p>`:''}
@@ -2295,6 +2299,8 @@ PB.addEventListener('change',e=>{
     afterEdit();if(t.type!=='color')renderPanel();else{const c=PB.querySelector('canvas[data-thumb="'+S.si+'"]');if(c){const x=c.getContext('2d');x.setTransform(c.width/W,0,0,c.height/H,0,0);drawScene(x,sc,0,{pool});}}refreshScenes();return;}
   if(t.dataset.ob){const o=selObj();const f=t.dataset.ob;
     if(f==='autoKey'){S.autoKey=t.checked;LS.set('autoKey3',S.autoKey);renderPanel();return;}
+    if(f==='keyBrk'){if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;pushUndo();if(t.checked)k.brk=true;else delete k.brk;afterEdit();renderPanel();
+      toast(t.checked?'Neue Bewegung ab Frame '+(S.frame+1):'Mit dem Keyframe davor verbunden');return;}
     if(!o)return;pushUndo();
     if(f==='parent'){if(!setParent(o,t.value||null)){undoStack.pop();updateUndo();renderPanel();return;}afterEdit();renderPanel();toast(t.value?'Hängt jetzt an „'+findObj(sc,t.value).name+'“':'Hängt an nichts mehr');return;}
     if(f==='name')o.name=t.value.trim()||o.name;
