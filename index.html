@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="02.11.2026 14:43">
+<meta name="tfs-version" content="02.11.2026 14:57">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -429,7 +429,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
   stylusOnly:LS.get('stylusOnly',false),actFront:LS.get('actFront2',false),autoKey:LS.get('autoKey3',true),onion:LS.get('onion',true),loop:LS.get('loop',true),
   copyFwdAdd:LS.get('copyFwdAdd',true),copyFwdDel:LS.get('copyFwdDel',true),
-  sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
+  sel:null,playing:false,bgPaint:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
 const selObj=()=>S.sel?scene().objects.find(o=>o.id===S.sel)||null:null;
@@ -670,6 +670,18 @@ function strokesCanvas(strokes,w,h){
   const c=e?e.c:mkCanvas(w,h);const x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
   for(const s of strokes)drawStroke(x,s);
   ocache.set(strokes,{c,ver:imgVersion});return c;
+}
+// Gemalter Hintergrund: eine eigene Leinwand, damit der Radierer nur die Hintergrund-Striche trifft (nicht das Hintergrundbild)
+let bgPaintC=null,bgPaintKey='',bgLiveC=null;
+function bgStrokesCanvas(sc,live){
+  const base=sc.bgStrokes||[];
+  if(live){if(!bgLiveC)bgLiveC=mkCanvas(W,H);const x=bgLiveC.getContext('2d');x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,W,H);for(const s of base)drawStroke(x,s);drawStroke(x,live);return bgLiveC;}
+  if(!base.length)return null;
+  const key=sc.id+':'+base.length+':'+imgVersion+':'+(sc._bgVer||0);
+  if(bgPaintC&&bgPaintKey===key)return bgPaintC;
+  if(!bgPaintC)bgPaintC=mkCanvas(W,H);
+  const x=bgPaintC.getContext('2d');x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,W,H);for(const s of base)drawStroke(x,s);
+  bgPaintKey=key;return bgPaintC;
 }
 
 /* ---------- Keyframes ---------- */
@@ -972,6 +984,8 @@ function drawScene(ctx,sc,ft,opt){
     if(sc.bgVideo){const el=opt.pool&&opt.pool.get('bg:'+sc.id,sc.bgAsset,'video');if(el&&el.readyState>=2)drawCover(ctx,el,W,H);}
     else{const im=getImage(sc.bgAsset);if(im)drawCover(ctx,im,W,H);}
   }
+  // Gemalter Hintergrund – gleich auf allen Frames, hinter allen Ebenen und Objekten
+  if((sc.bgStrokes&&sc.bgStrokes.length)||opt.bgLive){const bgc=bgStrokesCanvas(sc,opt.bgLive);if(bgc)ctx.drawImage(bgc,0,0,W,H);}
   // Jede Ebene: Objekte „hinter der Zeichnung“, dann die Zeichnung, dann ihre übrigen Objekte.
   // Optional liegt beim Zeichnen die markierte Ebene vorne; beim Abspielen und im Video gilt immer die echte Reihenfolge.
   const ls=layersOf(sc),actFront=opt.active&&opt.actFront?ls.find(l=>l.id===opt.active.id):null;
@@ -1041,7 +1055,7 @@ function render(){
   sctx.save();sctx.translate(v.tx,v.ty);sctx.scale(v.s,v.s);
   sctx.shadowColor='rgba(0,0,0,.25)';sctx.shadowBlur=18;sctx.fillStyle='#fff';sctx.fillRect(0,0,W,H);sctx.shadowBlur=0;sctx.shadowColor='transparent';
   if(camOn()){sctx.beginPath();sctx.rect(0,0,W,H);sctx.clip();}
-  drawScene(sctx,sc,ft,{pool,ui:true,live:G&&G.kind==='draw'?G.s:null,active:S.playing?null:actLayer(sc),actFront:S.actFront,onion:S.onion&&!S.playing,noCam:!camOn()});
+  drawScene(sctx,sc,ft,{pool,ui:true,live:G&&G.kind==='draw'&&!S.bgPaint?G.s:null,bgLive:G&&G.kind==='draw'&&S.bgPaint?G.s:null,active:S.playing?null:actLayer(sc),actFront:S.actFront,onion:S.onion&&!S.playing,noCam:!camOn()});
   if(G&&(G.kind==='shape'||G.kind==='free'||G.kind==='path')){
     sctx.save();if(camOn()){const C=camMat(sc,ft);sctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}drawShapePreview(sc,fi);sctx.restore();}
   sctx.restore();
@@ -1520,7 +1534,7 @@ function endPtr(e){
     if(!ptrs.size)G=null;return;}
   if(G.kind==='dead'){if(!ptrs.size)G=null;return;}
   if(G.id!==e.pointerId)return;
-  if(G.kind==='draw'){if(e.type==='pointerup'&&G.s.p.length){const s=G.s;pushUndo();s.q=nextQ();const sc=scene();curFrames(sc)[S.frame].push(s);G=null;afterEdit();}else{G=null;requestRender();}}
+  if(G.kind==='draw'){if(e.type==='pointerup'&&G.s.p.length){const s=G.s;pushUndo();s.q=nextQ();const sc=scene();if(S.bgPaint){(sc.bgStrokes||(sc.bgStrokes=[])).push(s);sc._bgVer=(sc._bgVer||0)+1;}else curFrames(sc)[S.frame].push(s);G=null;afterEdit();}else{G=null;requestRender();}}
   else if(G.kind==='pan'){if(!G.moved&&G.deselect)select(null);G=null;}
   else if(G.kind==='marq'){const g=G;G=null;if(e.type==='pointerup')finishMarquee(g);else requestRender();}
   else if(G.kind==='mmove'){const moved=G.pushed;G=null;if(moved){afterEdit();renderPanel();}}
@@ -1816,8 +1830,13 @@ function resizeTl(){const r=tl.getBoundingClientRect();TL.w=r.width;TL.h=r.heigh
   document.documentElement.style.setProperty('--tl-lw',TL.LW+'px');
   tl.width=Math.round(r.width*dpr);tl.height=Math.round(r.height*dpr);sizeLanes();drawTimeline();}
 function audioDur(a){const b=readyBuf(a.assetId);return(b&&b.duration)||a.dur||2;}
-function ensureVisible(){const x=S.ft*TL.CW;const vw=TL.w-TL.LW;if(x<TL.sx)TL.sx=Math.max(0,x-TL.CW*2);else if(x+TL.CW>TL.sx+vw)TL.sx=x-vw+TL.CW*3;}
-function clampSx(){TL.sx=clamp(TL.sx,0,Math.max(0,scene().length*TL.CW-(TL.w-TL.LW)+TL.CW*3));}
+// Der aktuelle Frame sitzt mittig in der Leiste; es wird darum herum gescrollt
+function ensureVisible(){const vw=TL.w-TL.LW;TL.sx=S.ft*TL.CW+TL.CW/2-vw/2;clampSx();}
+function clampSx(){const vw=TL.w-TL.LW,CW=TL.CW,lo=CW/2-vw/2,hi=(scene().length-0.5)*CW-vw/2;TL.sx=clamp(TL.sx,lo,Math.max(lo,hi));}
+// Frame, der gerade in der Mitte der Leiste steht
+function tlCenterFrame(){return clamp(Math.floor((TL.sx+(TL.w-TL.LW)/2)/TL.CW),0,scene().length-1);}
+// Beim Scrollen den Frame mitführen, ohne die Leiste neu zu zentrieren (sonst würde sie ruckeln)
+function scrollSetFrame(f,silent){const sc=scene();f=clamp(f|0,0,sc.length-1);if(f===S.frame)return;S.frame=f;S.ft=f;syncMedia(pool,sc,f/sc.fps,false);if(!silent)audioScrub();requestRender();updateFrameInfo();if(S.tab==='obj')renderPanel();}
 function tlRange(sc){return{i0:Math.max(0,Math.floor(TL.sx/TL.CW)),i1:Math.min(sc.length-1,Math.ceil((TL.sx+TL.w-TL.LW)/TL.CW))};}
 // Keyframes, die unter den Bildern stehen: vom gewählten Objekt, sonst von der Kamera
 function tlKeys(sc){const o=selObj();if(o)return{keys:o.keys,o,label:o.name};if(sc.cam&&sc.cam.keys.length)return{keys:sc.cam.keys,cam:true,label:'Kamera'};return null;}
@@ -1880,7 +1899,7 @@ function fitText(c,t,mw){if(c.measureText(t).width<=mw)return t;while(t.length>1
 function tlStopMomentum(){if(TL._mom){cancelAnimationFrame(TL._mom);TL._mom=null;}}
 function tlMomentum(vsx){tlStopMomentum();let v=clamp(vsx,-60,60);
   const step=()=>{if(Math.abs(v)<0.4||!S.project){TL._mom=null;return;}
-    const before=TL.sx;TL.sx+=v;clampSx();drawTimeline();
+    const before=TL.sx;TL.sx+=v;clampSx();scrollSetFrame(tlCenterFrame(),true);drawTimeline();
     if(TL.sx===before){TL._mom=null;return;}// am Rand angekommen
     v*=0.93;TL._mom=requestAnimationFrame(step);};
   TL._mom=requestAnimationFrame(step);}
@@ -1896,7 +1915,7 @@ tl.addEventListener('pointerdown',e=>{
 tl.addEventListener('pointermove',e=>{
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;const x=e.clientX-tl.getBoundingClientRect().left,dx=x-D.x0;if(Math.abs(dx)>6)D.moved=true;
   // Ziehen über die Bilder schiebt den ganzen Streifen (wie beim Blättern), der aktuelle Frame bleibt stehen
-  if(D.mode==='pan'){const before=TL.sx;TL.sx=D.sx0-dx;clampSx();D.vsx=D.vsx*0.6+(TL.sx-before)*0.4;D.lx=x;drawTimeline();}
+  if(D.mode==='pan'){const before=TL.sx;TL.sx=D.sx0-dx;clampSx();D.vsx=D.vsx*0.6+(TL.sx-before)*0.4;D.lx=x;scrollSetFrame(tlCenterFrame());drawTimeline();}
   else if(D.mode==='key'){if(!D.moved)return;const ks=()=>D.cam?scene().cam.keys:D.o.keys;if(!D.pushed){pushUndo();D.pushed=true;D.k=ks().find(k=>k.f===D.f0);}
     D.k.f=Math.max(0,Math.round(D.f0+dx/TL.CW));ks().sort((a,b)=>a.f-b.f);requestRender();drawTimeline();}
 });
@@ -1906,7 +1925,7 @@ function tlUp(e){
   if(!D.moved&&e.type==='pointerup'){
     if(D.mode==='label'){S.tab='layers';renderPanel();}
     else if(D.mode==='key')setFrame(D.f0);
-    else if(D.mode==='pan')navFrame(clamp(Math.floor((D.x0-TL.LW+TL.sx)/TL.CW),0,scene().length-1));// Tippen = Frame wählen
+    else if(D.mode==='pan')scrollSetFrame(Math.floor((D.x0-TL.LW+TL.sx)/TL.CW));// Tippen = Frame wählen, ohne zu springen
   }else if(D.mode==='pan'&&Math.abs(D.vsx)>1.5)tlMomentum(D.vsx);// Werfen rollt sanft aus
   drawTimeline();
 }
@@ -2135,7 +2154,9 @@ function panelScene(){
   <div class="grp"><div class="sub">Hintergrund</div>
     <div class="row"><input id="sc-bg" type="color" value="${esc(sc.bg)}" data-sc="bg" aria-label="Hintergrundfarbe"><div class="chips">${bgs}</div></div>
     <div class="btns"><button class="btn sm" data-a="bgImage">${icon('image')}${sc.bgAsset?(sc.bgVideo?'Video ersetzen':'Bild ersetzen'):'Bild oder Video'}</button>${sc.bgAsset?`<button class="btn sm danger" data-a="bgClear">${sc.bgVideo?'Video':'Bild'} entfernen</button>`:''}</div>
-    ${sc.bgVideo?`<p class="hint">Das Video läuft im Hintergrund mit und wiederholt sich bis zum Szenenende.</p>`:''}</div>
+    ${sc.bgVideo?`<p class="hint">Das Video läuft im Hintergrund mit und wiederholt sich bis zum Szenenende.</p>`:''}
+    <div class="btns"><button class="btn sm ${S.bgPaint?'on':''}" data-a="bgPaint">${icon('pen')}Hintergrund malen${S.bgPaint?': an':''}</button>${sc.bgStrokes&&sc.bgStrokes.length?`<button class="btn sm danger" data-a="bgPaintClear">Malerei löschen</button>`:''}</div>
+    ${S.bgPaint?`<p class="hint"><strong>Hintergrund-Modus an.</strong> Was du jetzt malst, liegt hinter allem und ist auf allen Frames gleich. Tippe nochmal auf den Knopf, um normal weiterzumalen.</p>`:`<p class="hint">Male einen festen Hintergrund, der auf allen Frames gleich bleibt.</p>`}</div>
   ${panelCam(sc)}
   <div class="grp"><div class="sub">Einstellungen</div>
     <label class="check"><input type="checkbox" data-set="copyFwdAdd" ${S.copyFwdAdd?'checked':''}>Neues Objekt gilt ab hier für alle folgenden Frames</label>
@@ -2378,6 +2399,8 @@ const A={
   bgc:el=>{pushUndo();scene().bg=el.dataset.v;afterEdit();renderPanel();},
   bgImage:()=>pick('image/*,video/*',async([f])=>{try{const isVid=(f.type||'').startsWith('video');const id=await addAsset(f,isVid?'video':'image');await assetUrl(id);pushUndo();const sc=scene();sc.bgAsset=id;sc.bgVideo=isVid;afterEdit();renderPanel();}catch(e){toast('Diese Datei lässt sich nicht öffnen.');}}),
   bgClear:()=>{pushUndo();const sc=scene();sc.bgAsset=null;sc.bgVideo=false;afterEdit();renderPanel();},
+  bgPaint:()=>{S.bgPaint=!S.bgPaint;if(S.bgPaint&&!['pen','marker','eraser','fill'].includes(S.tool))setTool('pen');updateModeUI();renderPanel();requestRender();toast(S.bgPaint?'Hintergrund malen: an – liegt auf allen Frames':'Hintergrund malen: aus');},
+  bgPaintClear:()=>{const sc=scene();if(!sc.bgStrokes||!sc.bgStrokes.length)return;pushUndo();sc.bgStrokes=[];sc._bgVer=(sc._bgVer||0)+1;afterEdit();renderPanel();toast('Hintergrund-Malerei gelöscht');},
   audioDel:el=>{pushUndo();const sc=scene();sc.audio=sc.audio.filter(a=>a.id!==el.dataset.id);afterTrackEdit();},
   frameToObj:frameToObject,
   keyPrev:()=>{const o=selObj();if(!o)return;const k=[...o.keys].reverse().find(k=>k.f<S.frame);if(k)setFrame(k.f);},
@@ -2528,7 +2551,7 @@ document.addEventListener('pointerdown',e=>{if(!$('#brushPop').hidden&&!e.target
 function updateModeUI(){
   $('#stylusBtn').classList.toggle('on',S.stylusOnly);$('#onionBtn').classList.toggle('on',S.onion);$('#loopBtn').classList.toggle('on',S.loop);
   const names={select:'Auswählen',pen:'Stift',marker:'Marker',eraser:'Radierer',fill:'Füllen',hand:'Ansicht',shape:'Form: '+SHAPE_NAME[S.shapeKind]};
-  $('#modePill').innerHTML=S.pickColor?'<b>Pipette</b> · Tippe auf die Farbe, die du willst':S.camEdit?'<b>Kamera bearbeiten</b> · Rahmen ziehen, Ecke zoomt, oben dreht':S.pathFor?'<b>Pfad zeichnen</b> · Weg auf der Bühne zeichnen':S.pivotEdit?'<b>Drehpunkt</b> · roten Punkt ans Gelenk ziehen':`<b>${names[S.tool]}</b>${['pen','marker','eraser','fill'].includes(S.tool)&&S.project?' · '+esc(actLayer().name):''}${S.stylusOnly?' · Nur Stift – Finger verschiebt':''}`;
+  $('#modePill').innerHTML=S.pickColor?'<b>Pipette</b> · Tippe auf die Farbe, die du willst':S.camEdit?'<b>Kamera bearbeiten</b> · Rahmen ziehen, Ecke zoomt, oben dreht':S.pathFor?'<b>Pfad zeichnen</b> · Weg auf der Bühne zeichnen':S.pivotEdit?'<b>Drehpunkt</b> · roten Punkt ans Gelenk ziehen':`<b>${names[S.tool]}</b>${['pen','marker','eraser','fill'].includes(S.tool)&&S.project?' · '+(S.bgPaint?'Hintergrund (alle Frames)':esc(actLayer().name)):''}${S.stylusOnly?' · Nur Stift – Finger verschiebt':''}`;
   const ch=$('#camHud');if(ch)ch.classList.toggle('on',!!S.camEdit);
 }
 
