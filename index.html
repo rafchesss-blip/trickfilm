@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="26.10.2026 16:47">
+<meta name="tfs-version" content="02.11.2026 14:43">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -428,6 +428,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('tfs.'+k);return v==null?d:J
 /* ---------- State ---------- */
 const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('color','#1b1f2a'),size:LS.get('size',6),alpha:LS.get('alpha',1),
   stylusOnly:LS.get('stylusOnly',false),actFront:LS.get('actFront2',false),autoKey:LS.get('autoKey3',true),onion:LS.get('onion',true),loop:LS.get('loop',true),
+  copyFwdAdd:LS.get('copyFwdAdd',true),copyFwdDel:LS.get('copyFwdDel',true),
   sel:null,playing:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
@@ -563,6 +564,11 @@ function audioScrub(){
 function navFrame(f){const old=S.frame;setFrame(f);if(S.frame!==old)audioScrub();}
 function syncMedia(pl,sc,t,playing){
   const f=t*sc.fps;
+  // Hintergrund-Video: läuft mit und wiederholt sich bis zum Szenenende
+  if(sc.bgAsset&&sc.bgVideo){const el=pl.get('bg:'+sc.id,sc.bgAsset,'video');el.muted=true;el.loop=true;
+    const d=el.duration||0,bt=d>0?t%d:t;
+    if(playing){if(el.paused)el.play().catch(()=>{});if(d>0&&Math.abs(el.currentTime-bt)>0.3){try{el.currentTime=bt;}catch(x){}}}
+    else{if(!el.paused)el.pause();if(el.readyState>=1&&d>0){const tg=clamp(bt,0,Math.max(0,d-0.05));if(Math.abs(el.currentTime-tg)>0.04){try{el.currentTime=tg;}catch(x){}}}}}
   for(const o of sc.objects){
     if(o.type!=='video')continue;
     const el=pl.get(o.id,o.assetId,'video');el.muted=!!o.muted;
@@ -579,6 +585,7 @@ function syncMedia(pl,sc,t,playing){
 }
 function primeMedia(pl,scenes){
   for(const sc of scenes){
+    if(sc.bgAsset&&sc.bgVideo){const el=pl.get('bg:'+sc.id,sc.bgAsset,'video');el.muted=true;el.loop=true;if(el.src){el.play().catch(()=>{});el.pause();}}
     for(const o of sc.objects)if(o.type==='video'){const el=pl.get(o.id,o.assetId,'video');el.muted=!!o.muted;if(el.src){el.play().catch(()=>{});el.pause();}}
   }
 }
@@ -676,8 +683,8 @@ function keyPts(o,i){for(let j=i;j>=0;j--)if(o.keys[j].pts)return o.keys[j].pts;
 function lerpPts(a,b,u){if(!a||!b||a===b||a.length!==b.length)return a;const r=new Array(a.length);for(let i=0;i<a.length;i++)r[i]=a[i]+(b[i]-a[i])*u;return r;}
 const ANIM=[['pos','Position'],['s','Größe'],['r','Drehung'],['o','Deckkraft'],['tint','Farbe']];
 const ANIM_NEW={pos:true,s:true,r:true,o:false,tint:false};
-// Ältere Objekte ohne Einstellung: animiert wird, was sich in den Keyframes schon unterscheidet
-function animFlags(o){if(o.anim)return o.anim;const k=o.keys,d=f=>k.some(x=>(x[f]??null)!==(k[0][f]??null));return{pos:true,s:true,r:true,o:k.length>1&&d('o'),tint:k.length>1&&(d('tc')||d('ta'))};}
+// Alles animiert automatisch: Was sich zwischen zwei Keyframes unterscheidet, bewegt sich fließend. Keine Auswahl mehr nötig.
+function animFlags(o){return{pos:true,s:true,r:true,o:true,tint:true};}
 const propGroup=p=>p==='x'||p==='y'?'pos':p==='tc'||p==='ta'?'tint':p;
 const BASE0={x:W/2,y:H/2,s:1,r:0,o:1,tc:TINT0,ta:0};
 // Hat ein Objekt keine Keyframes, steht seine Lage in o.base. Bearbeitet werden immer die Keyframes oder, ohne Keyframes, die Grundstellung.
@@ -961,7 +968,10 @@ function drawScene(ctx,sc,ft,opt){
   ctx.fillStyle=sc.bg||'#ffffff';ctx.fillRect(0,0,W,H);
   ctx.save();
   if(!opt.noCam){const C=camMat(sc,ft);if(C!==I6)ctx.transform(C[0],C[1],C[2],C[3],C[4],C[5]);}
-  if(sc.bgAsset){const im=getImage(sc.bgAsset);if(im)drawCover(ctx,im,W,H);}
+  if(sc.bgAsset){
+    if(sc.bgVideo){const el=opt.pool&&opt.pool.get('bg:'+sc.id,sc.bgAsset,'video');if(el&&el.readyState>=2)drawCover(ctx,el,W,H);}
+    else{const im=getImage(sc.bgAsset);if(im)drawCover(ctx,im,W,H);}
+  }
   // Jede Ebene: Objekte „hinter der Zeichnung“, dann die Zeichnung, dann ihre übrigen Objekte.
   // Optional liegt beim Zeichnen die markierte Ebene vorne; beim Abspielen und im Video gilt immer die echte Reihenfolge.
   const ls=layersOf(sc),actFront=opt.active&&opt.actFront?ls.find(l=>l.id===opt.active.id):null;
@@ -1271,7 +1281,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:S.frame,outF:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
+    w:10,h:10,inF:S.frame,outF:S.copyFwdAdd?null:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   if(kind==='free'&&sharpPts&&sharpPts.some(Boolean))o.sharp=sharpPts;
   shapeDims(o);return o;
 }
@@ -1866,38 +1876,42 @@ function paintTimeline(){
 }
 function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 function fitText(c,t,mw){if(c.measureText(t).width<=mw)return t;while(t.length>1&&c.measureText(t+'…').width>mw)t=t.slice(0,-1);return t+'…';}
+// Schwung nach dem Loslassen (sanftes Ausrollen beim Blättern)
+function tlStopMomentum(){if(TL._mom){cancelAnimationFrame(TL._mom);TL._mom=null;}}
+function tlMomentum(vsx){tlStopMomentum();let v=clamp(vsx,-60,60);
+  const step=()=>{if(Math.abs(v)<0.4||!S.project){TL._mom=null;return;}
+    const before=TL.sx;TL.sx+=v;clampSx();drawTimeline();
+    if(TL.sx===before){TL._mom=null;return;}// am Rand angekommen
+    v*=0.93;TL._mom=requestAnimationFrame(step);};
+  TL._mom=requestAnimationFrame(step);}
 tl.addEventListener('pointerdown',e=>{
-  if(!S.project)return;if(S.playing)stopPlayback();
+  if(!S.project)return;if(S.playing)stopPlayback();tlStopMomentum();
   const r=tl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;try{tl.setPointerCapture(e.pointerId);}catch(z){}
   const sc=scene(),{CW,RUL,LW}=TL,fpos=(x-LW+TL.sx)/CW;
-  const D={id:e.pointerId,x0:x,sx0:TL.sx,moved:false,fpos,mode:'tap'};
+  const D={id:e.pointerId,x0:x,lx:x,sx0:TL.sx,moved:false,fpos,vsx:0,mode:'pan'};
   if(x<LW)D.mode='label';
   else{const K=tlKeys(sc);if(K&&y>RUL+thumbSize().h){const k=K.keys.find(k=>Math.abs(LW+(k.f+.5)*CW-TL.sx-x)<14);if(k){D.mode='key';D.k=k;D.o=K.o;D.cam=!!K.cam;D.f0=k.f;}}}
-  // Finger über die Bilder ziehen = durch die Frames blättern (am Rand läuft die Leiste weiter)
-  if(D.mode==='tap'){D.mode='scrub';D.lx=x;navFrame(Math.floor(fpos));scrubEdge(D);}
   TL.drag=D;drawTimeline();
 });
 tl.addEventListener('pointermove',e=>{
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;const x=e.clientX-tl.getBoundingClientRect().left,dx=x-D.x0;if(Math.abs(dx)>6)D.moved=true;
-  if(D.mode==='scrub'){D.lx=x;navFrame(Math.floor((x-TL.LW+TL.sx)/TL.CW));}
+  // Ziehen über die Bilder schiebt den ganzen Streifen (wie beim Blättern), der aktuelle Frame bleibt stehen
+  if(D.mode==='pan'){const before=TL.sx;TL.sx=D.sx0-dx;clampSx();D.vsx=D.vsx*0.6+(TL.sx-before)*0.4;D.lx=x;drawTimeline();}
   else if(D.mode==='key'){if(!D.moved)return;const ks=()=>D.cam?scene().cam.keys:D.o.keys;if(!D.pushed){pushUndo();D.pushed=true;D.k=ks().find(k=>k.f===D.f0);}
     D.k.f=Math.max(0,Math.round(D.f0+dx/TL.CW));ks().sort((a,b)=>a.f-b.f);requestRender();drawTimeline();}
 });
-function scrubEdge(D){requestAnimationFrame(()=>{if(TL.drag!==D)return;const x=D.lx,e=44,lw=TL.LW;let v=0;
-  if(x>TL.w-e)v=(x-(TL.w-e))/e;else if(x<lw+e&&TL.sx>0)v=-(lw+e-x)/e;
-  if(v){TL.sx+=clamp(v,-1.5,1.5)*TL.CW*0.35;clampSx();navFrame(Math.floor((x-lw+TL.sx)/TL.CW));drawTimeline();}
-  scrubEdge(D);});}
 function tlUp(e){
   const D=TL.drag;if(!D||D.id!==e.pointerId)return;TL.drag=null;
   if(D.mode==='key'&&D.pushed){const host=D.cam?scene().cam:D.o;if(!D.cam)extendVisible(D.o,D.k.f);const dup=host.keys.filter(k=>k.f===D.k.f);if(dup.length>1)host.keys=host.keys.filter(k=>k===D.k||k.f!==D.k.f);setFrame(D.k.f);afterEdit();renderPanel();return;}
   if(!D.moved&&e.type==='pointerup'){
     if(D.mode==='label'){S.tab='layers';renderPanel();}
     else if(D.mode==='key')setFrame(D.f0);
-  }
+    else if(D.mode==='pan')navFrame(clamp(Math.floor((D.x0-TL.LW+TL.sx)/TL.CW),0,scene().length-1));// Tippen = Frame wählen
+  }else if(D.mode==='pan'&&Math.abs(D.vsx)>1.5)tlMomentum(D.vsx);// Werfen rollt sanft aus
   drawTimeline();
 }
 tl.addEventListener('pointerup',tlUp);tl.addEventListener('pointercancel',tlUp);
-tl.addEventListener('wheel',e=>{e.preventDefault();TL.sx+=e.deltaX||e.deltaY;clampSx();drawTimeline();},{passive:false});
+tl.addEventListener('wheel',e=>{e.preventDefault();tlStopMomentum();TL.sx+=e.deltaX||e.deltaY;clampSx();drawTimeline();},{passive:false});
 
 /* ---------- Ton-Mischpult ---------- */
 const mix=$('#mix');let mixOpen=LS.get('mixOpen',true),lanes=[],MD=null,mixVolUndo=false;
@@ -2016,7 +2030,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:S.project?S.frame:0,outF:S.project?S.frame:null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:S.project?S.frame:0,outF:S.project?(S.copyFwdAdd?null:S.frame):null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -2120,8 +2134,13 @@ function panelScene(){
   </div>
   <div class="grp"><div class="sub">Hintergrund</div>
     <div class="row"><input id="sc-bg" type="color" value="${esc(sc.bg)}" data-sc="bg" aria-label="Hintergrundfarbe"><div class="chips">${bgs}</div></div>
-    <div class="btns"><button class="btn sm" data-a="bgImage">${icon('image')}${sc.bgAsset?'Bild ersetzen':'Bild als Hintergrund'}</button>${sc.bgAsset?`<button class="btn sm danger" data-a="bgClear">Bild entfernen</button>`:''}</div></div>
-  ${panelCam(sc)}`;
+    <div class="btns"><button class="btn sm" data-a="bgImage">${icon('image')}${sc.bgAsset?(sc.bgVideo?'Video ersetzen':'Bild ersetzen'):'Bild oder Video'}</button>${sc.bgAsset?`<button class="btn sm danger" data-a="bgClear">${sc.bgVideo?'Video':'Bild'} entfernen</button>`:''}</div>
+    ${sc.bgVideo?`<p class="hint">Das Video läuft im Hintergrund mit und wiederholt sich bis zum Szenenende.</p>`:''}</div>
+  ${panelCam(sc)}
+  <div class="grp"><div class="sub">Einstellungen</div>
+    <label class="check"><input type="checkbox" data-set="copyFwdAdd" ${S.copyFwdAdd?'checked':''}>Neues Objekt gilt ab hier für alle folgenden Frames</label>
+    <label class="check"><input type="checkbox" data-set="copyFwdDel" ${S.copyFwdDel?'checked':''}>Löschen entfernt das Objekt nur ab diesem Frame (davor bleibt es)</label>
+    <p class="hint">Sind beide aus, gilt ein neues Objekt nur auf dem einen Frame, und Löschen entfernt es überall.</p></div>`;
 }
 function panelCam(sc){
   const st=camState(sc,S.frame),ks=sc.cam&&sc.cam.keys||[],k=ks.find(k=>k.f===S.frame),kb=[...ks].reverse().find(k=>k.f<=S.frame);
@@ -2154,12 +2173,11 @@ function panelObj(){
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
     ${k&&o.keys.indexOf(k)>0?`<label class="check"><input id="ob-brk" type="checkbox" data-ob="keyBrk" ${k.brk?'checked':''}>Neue Bewegung: nicht mit dem Keyframe davor verbinden (bis hier bleibt es stehen)</label>`:''}
-    <div class="sub">Was soll sich zwischen Keyframes verändern?</div>
-    <div class="chips">${ANIM.map(([g,n])=>`<button class="chip ${animFlags(o)[g]?'on':''}" data-a="animTog" data-v="${g}">${n}</button>`).join('')}${morphables(o).length?`<button class="chip ${morphables(o).every(x=>x.morph)?'on':''}" data-a="animTog" data-v="form">Form</button>`:''}</div>
+    <p class="hint">Alles, was du zwischen zwei Keyframes am Objekt änderst – Position, Größe, Drehung, Deckkraft, Farbe – bewegt sich automatisch fließend von einem Keyframe zum anderen.</p>
+    ${morphables(o).length?`<div class="sub">Form verbiegen</div><div class="chips"><button class="chip ${morphables(o).every(x=>x.morph)?'on':''}" data-a="animTog" data-v="form">Form ${morphables(o).every(x=>x.morph)?'an':'aus'}</button></div>`:''}
     ${o.type==='group'&&morphables(o).length&&morphables(o).every(x=>x.morph)?`<p class="hint"><strong>Form ist an:</strong> Ziehe die weißen Punkte der Teile. Die neue Form gilt nur für diesen Frame (es entsteht ein Form-Keyframe), dazwischen verwandelt sie sich fließend. Die Form auf dem Start-Frame bleibt erhalten.</p>`:''}
     ${isWarp(o)&&o.morph?`<p class="hint"><strong>Form ist an:</strong> Ziehe die 9 weißen Punkte auf der Bühne, um das Objekt zu verbiegen, zu stauchen oder zu strecken. Auf einem anderen Frame neu ziehen: Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt es sich fließend.</p>`:''}
     ${isWarp(o)&&o.pts?`<div class="btns"><button class="btn sm" data-a="warpReset">Form zurücksetzen</button></div>`:''}
-    <p class="hint">Nur eingeschaltete Dinge ändern sich von Keyframe zu Keyframe. Alles andere ist in jedem Frame gleich, egal auf welchem Frame du es änderst.</p>
     <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: beim Verschieben automatisch Keyframes setzen</label>
     <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
   ${o.type==='mouth'?panelMouth(o):''}
@@ -2168,7 +2186,7 @@ function panelObj(){
   <div class="grp"><div class="sub">Farbe auf Frame ${S.frame+1}</div>
     <div class="row"><label for="tr-tc">Tönung</label><input id="tr-tc" type="color" value="${st.tc}" data-tr="tc"><div class="chips">${['#ff3b30','#ff9500','#ffd60a','#34c759','#0a84ff','#ffffff','#000000'].map(c=>`<button class="chip" data-a="tint" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Tönung ${c}"></button>`).join('')}</div></div>
     ${slider('ta','Stärke',0,100,st.ta*100,'%')}
-    <p class="hint">Schalte oben „Farbe“ ein und setze auf zwei Frames unterschiedliche Tönungen. Dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
+    <p class="hint">Setze auf zwei Keyframes unterschiedliche Tönungen – dazwischen geht die Farbe fließend über. Stärke 0 % heißt Originalfarbe.</p></div>
   ${o.type==='shape'?`<div class="grp"><div class="sub">Form</div>
     ${o.closed?`<div class="row"><label class="check" style="min-width:110px"><input id="sh-fon" type="checkbox" data-sh="fillOn" ${o.fillOn?'checked':''}>Füllung</label><input id="sh-fill" type="color" value="${o.fill}" data-sh="fill" aria-label="Füllfarbe"></div>
     <div class="chips">${RAND_PAL.map(c=>`<button class="chip" data-a="shCol" data-k="fill" data-v="${c}" style="width:26px;padding:0;background:${c}" aria-label="Füllfarbe ${c}"></button>`).join('')}</div>`:''}
@@ -2275,6 +2293,7 @@ PB.addEventListener('input',e=>{
 });
 PB.addEventListener('change',e=>{
   const t=e.target,sc=scene();
+  if(t.dataset.set){const f=t.dataset.set;S[f]=t.checked;LS.set(f,S[f]);return;}
   if(t.dataset.tr){PB._edit=null;afterEdit();if(t.type==='color'){const ta=$('#tr-ta'),st=objState(selObj()||{keys:[]},S.frame);if(ta){ta.value=Math.round(st.ta*100);$('#trv-ta').textContent=Math.round(st.ta*100)+'%';}}else renderPanel();return;}
   if(t.dataset.ly==='front'){S.actFront=t.checked;LS.set('actFront2',S.actFront);requestRender();return;}
   if(t.dataset.ly){const l=actLayer();if(t.dataset.ly==='name'){pushUndo();l.name=t.value.trim()||l.name;}PB._ly=false;afterEdit();renderPanel();updateModeUI();return;}
@@ -2357,8 +2376,8 @@ const A={
   sceneDel:async()=>{if(S.project.scenes.length<2)return;if(!await confirmDlg(`Szene „${scene().name}“ löschen?`,'Löschen'))return;pushUndo();S.project.scenes.splice(S.si,1);switchScene(Math.max(0,S.si-1));afterEdit();},
   fps:el=>{pushUndo();scene().fps=+el.dataset.v;afterEdit();renderPanel();},
   bgc:el=>{pushUndo();scene().bg=el.dataset.v;afterEdit();renderPanel();},
-  bgImage:()=>pick('image/*',async([f])=>{try{const id=await addAsset(f,'image');await assetUrl(id);pushUndo();scene().bgAsset=id;afterEdit();renderPanel();}catch(e){toast('Dieses Bild lässt sich nicht öffnen.');}}),
-  bgClear:()=>{pushUndo();scene().bgAsset=null;afterEdit();renderPanel();},
+  bgImage:()=>pick('image/*,video/*',async([f])=>{try{const isVid=(f.type||'').startsWith('video');const id=await addAsset(f,isVid?'video':'image');await assetUrl(id);pushUndo();const sc=scene();sc.bgAsset=id;sc.bgVideo=isVid;afterEdit();renderPanel();}catch(e){toast('Diese Datei lässt sich nicht öffnen.');}}),
+  bgClear:()=>{pushUndo();const sc=scene();sc.bgAsset=null;sc.bgVideo=false;afterEdit();renderPanel();},
   audioDel:el=>{pushUndo();const sc=scene();sc.audio=sc.audio.filter(a=>a.id!==el.dataset.id);afterTrackEdit();},
   frameToObj:frameToObject,
   keyPrev:()=>{const o=selObj();if(!o)return;const k=[...o.keys].reverse().find(k=>k.f<S.frame);if(k)setFrame(k.f);},
@@ -2423,13 +2442,18 @@ const A={
     const c=JSON.parse(JSON.stringify(o));c.id=uid();c.name=o.name+' 2';c.strokes=o.strokes;c.keys.forEach(k=>{k.x+=40;k.y+=40;});if(c.base){c.base.x+=40;c.base.y+=40;}c.q=nextQ();addObject(c);},
   objDel:()=>{const ms=multiObjs(),sc=scene(),F=S.frame;
     const list=ms.length>1?ms:selObj()?[selObj()]:[];if(!list.length)return;
-    // Gelöscht wird ab diesem Frame: auf den Frames davor bleibt das Objekt. Beginnt es erst hier, ist es ganz weg.
     const all=new Set();for(const o of list){all.add(o);if(o.type==='group')descendants(sc,o).forEach(x=>all.add(x));}
-    const gone=new Set([...all].filter(x=>(x.inF||0)>=F).map(x=>x.id));pushUndo();
+    const nm=list.length>1?list.length+' Objekte':'„'+list[0].name+'“';
+    pushUndo();
+    // Einstellung aus: ganz löschen (alle Frames). Standard: ab diesem Frame löschen, davor bleibt das Objekt.
+    if(!S.copyFwdDel){
+      const gone=new Set([...all].map(x=>x.id));
+      sc.objects.filter(c=>c.parent&&gone.has(c.parent)&&!gone.has(c.id)).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>!gone.has(x.id));
+      S.sel=null;S.multi=null;afterEdit();renderPanel();toast(nm+' ganz gelöscht. Rückgängig holt es zurück.');return;}
+    const gone=new Set([...all].filter(x=>(x.inF||0)>=F).map(x=>x.id));
     for(const x of all)if(!gone.has(x.id)){x.outF=x.outF==null?F-1:Math.min(x.outF,F-1);if(x.hide)x.hide=x.hide.filter(f=>f<F);}
     sc.objects.filter(c=>c.parent&&gone.has(c.parent)&&!gone.has(c.id)).forEach(c=>setParent(c,null));sc.objects=sc.objects.filter(x=>!gone.has(x.id));
     S.sel=null;S.multi=null;afterEdit();renderPanel();
-    const nm=list.length>1?list.length+' Objekte':'„'+list[0].name+'“';
     toast(gone.size===all.size?nm+' gelöscht. Rückgängig holt es zurück.':nm+' ab Frame '+(F+1)+' gelöscht. Davor bleibt es.');},
   invDraw:()=>openEditor(null),invPhoto:()=>pick('image/*',invFromPhoto,true),invFrame:invFromFrame,
   invCat:el=>{S.invCat=el.dataset.v;renderPanel();},
