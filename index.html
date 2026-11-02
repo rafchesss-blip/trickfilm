@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="tfs-pwa" content="1">
-<meta name="tfs-version" content="02.11.2026 14:57">
+<meta name="tfs-version" content="02.11.2026 15:18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Trickfilm">
@@ -130,6 +130,13 @@ input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-rad
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{height:30px;padding:0 11px;border-radius:15px;border:1px solid var(--line);background:var(--raised);font-size:12.5px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
 .chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.mode-cards{display:flex;flex-direction:column;gap:8px}
+.mode-card{text-align:left;padding:11px 13px;border-radius:12px;border:1.5px solid var(--line);background:var(--raised);cursor:pointer;display:flex;flex-direction:column;gap:3px}
+.mode-card.on{border-color:var(--accent);background:var(--accent-soft)}
+.mode-card .mc-t{font-weight:700;font-size:15px;color:var(--fg)}
+.mode-card .mc-d{font-size:12.5px;color:var(--muted);line-height:1.45}
+.mode-card.soon{opacity:.6}
+.mode-card .mc-badge{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--line);color:var(--muted);padding:1px 6px;border-radius:8px;vertical-align:middle;margin-left:4px}
 .scene-list{display:flex;flex-direction:column;gap:6px}
 .scene-item{display:flex;gap:10px;align-items:center;padding:6px;border-radius:10px;border:1px solid transparent;cursor:pointer;background:none;text-align:left;width:100%}
 .scene-item:hover{background:var(--raised)}
@@ -322,7 +329,7 @@ details summary{list-style:none}
       <span class="sep"></span>
       <button class="btn sm" data-a="setKey" id="keyBtn" data-ic="key">Keyframe</button>
       <button class="btn sm" data-a="delKey" id="delKeyBtn">Key löschen</button>
-      <span class="sep"></span>
+      <span class="sep" id="keySep"></span>
       <button class="btn sm" data-a="onion" id="onionBtn" data-ic="onion" title="Zwiebelhaut" aria-label="Zwiebelhaut"><span class="lbl-b">Zwiebelhaut</span></button>
       <button class="btn sm" data-a="loop" id="loopBtn" data-ic="loop" title="Schleife" aria-label="Schleife"><span class="lbl-b">Schleife</span></button>
       <button class="btn sm" data-a="film" data-ic="film" title="Ganzen Film abspielen" aria-label="Ganzen Film abspielen"><span class="lbl-b">Ganzen Film</span></button>
@@ -432,6 +439,10 @@ const S={project:null,si:0,frame:0,ft:0,tool:LS.get('tool','pen'),color:LS.get('
   sel:null,playing:false,bgPaint:false,tab:'scene',view:{zoom:1,px:0,py:0},invSel:null,invCat:'Alle',shapeKind:LS.get('shapeKind','rect'),shapeFill:LS.get('shapeFill',true),shapeStroke:LS.get('shapeStroke',true),shapeStrokeColor:LS.get('shapeStrokeColor','#1b1f2a'),shapeSW:LS.get('shapeSW',6),recent:LS.get('recent',['#e5484d','#0090ff','#46a758','#ffc53d'])};
 let inventory=[];
 const scene=()=>S.project.scenes[S.si];
+// Projekt-Typ: 'anim' = Frame für Frame ohne Keyframes, 'animplus' = volle Animation mit Keyframes, 'video' = Videoschnitt
+const projMode=()=>(S.project&&S.project.mode)||'animplus';
+const isAnim=()=>projMode()==='anim';
+const isVideo=()=>projMode()==='video';
 const selObj=()=>S.sel?scene().objects.find(o=>o.id===S.sel)||null:null;
 // Mehrere ausgewählte Objekte (per Rahmen). Bei nur einem gilt die normale Auswahl S.sel.
 const multiObjs=()=>(S.multi||[]).map(id=>scene().objects.find(o=>o.id===id)).filter(Boolean);
@@ -742,10 +753,12 @@ function keyBefore(o,F){return [...o.keys].reverse().find(k=>k.f<=F)||o.keys[0]|
 function objVisible(o,fi){return fi>=(o.inF||0)&&(o.outF==null||fi<=o.outF)&&!(o.hide&&o.hide.includes(fi));}
 // Ein Keyframe entsteht nur, wenn etwas geändert wird, das auch animiert werden soll
 function beginEdit(o,F,groups){const AF=animFlags(o),anim=!groups||groups.some(g=>AF[g]);
+  // Frame-für-Frame-Modus: keine Keyframes, jede Änderung bleibt beim Objekt auf diesem Frame
+  const useKey=S.autoKey&&!isAnim();
   // Erste Änderung ohne Keyframes: der alte Zustand bleibt als Start-Keyframe stehen, geändert wird nur ab diesem Frame
-  if(anim&&S.autoKey&&!o.keys.length){const fs=[...parentKeyFrames(o),o.inF||0].filter(f=>f!==F);
+  if(anim&&useKey&&!o.keys.length){const fs=[...parentKeyFrames(o),o.inF||0].filter(f=>f!==F);
     if(fs.length)keyAt(o,fs.reduce((b,f)=>Math.abs(f-F)<Math.abs(b-F)?f:b),true);}
-  const key=anim?keyAt(o,F,S.autoKey):null;
+  const key=anim?keyAt(o,F,useKey):null;
   const base={...(o.path?objStateNoPath(o,F):objState(o,F))};return{o,F,base,orig:poses(o).map(k=>({...k})),key};}
 function applyVals(E,vals){
   const AF=animFlags(E.o);
@@ -1295,7 +1308,7 @@ function makeShape(kind,a,b,free){
   const line=kind==='line';
   const o={id:uid(),type:'shape',kind,name:SHAPE_NAME[kind],pts:pts.map(r1),closed,smooth,
     fill:S.color,fillOn:!line&&S.shapeFill,stroke:line?S.color:S.shapeStrokeColor,strokeOn:line||S.shapeStroke||!S.shapeFill,sw:line?Math.max(2,S.size):S.shapeSW,
-    w:10,h:10,inF:S.frame,outF:S.copyFwdAdd?null:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
+    w:10,h:10,inF:S.frame,outF:(S.copyFwdAdd&&!isAnim())?null:S.frame,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0,x:cx,y:cy},layer:S.project?actLayer().id:undefined,q:0};
   if(kind==='free'&&sharpPts&&sharpPts.some(Boolean))o.sharp=sharpPts;
   shapeDims(o);return o;
 }
@@ -1720,7 +1733,7 @@ function doFill(w){
 
 /* ---------- Undo ---------- */
 let undoStack=[],redoStack=[];
-function snapScene(sc){return{...sc,cam:sc.cam?{keys:sc.cam.keys.map(k=>({...k})),base:sc.cam.base?{...sc.cam.base}:undefined}:sc.cam,layers:layersOf(sc).map(l=>({...l,frames:l.frames.map(a=>a.slice())})),objects:sc.objects.map(o=>({...o,keys:o.keys.map(k=>({...k})),base:o.base?{...o.base}:o.base})),audio:sc.audio.map(a=>({...a}))};}
+function snapScene(sc){return{...sc,bgStrokes:sc.bgStrokes?sc.bgStrokes.slice():sc.bgStrokes,cam:sc.cam?{keys:sc.cam.keys.map(k=>({...k})),base:sc.cam.base?{...sc.cam.base}:undefined}:sc.cam,layers:layersOf(sc).map(l=>({...l,frames:l.frames.map(a=>a.slice())})),objects:sc.objects.map(o=>({...o,keys:o.keys.map(k=>({...k})),base:o.base?{...o.base}:o.base})),audio:sc.audio.map(a=>({...a}))};}
 function snapshot(){return{scenes:S.project.scenes.map(snapScene),si:S.si};}
 function pushUndo(){undoStack.push(snapshot());if(undoStack.length>60)undoStack.shift();redoStack.length=0;updateUndo();}
 function restore(st){S.project.scenes=st.scenes;S.si=clamp(st.si,0,st.scenes.length-1);const sc=scene();if(S.frame>=sc.length)S.frame=sc.length-1;S.ft=S.frame;
@@ -1745,6 +1758,7 @@ function updateFrameInfo(){
   if(!S.project)return;const sc=scene();
   $('#frameInfo').textContent=`Frame ${S.frame+1} / ${sc.length} · ${sc.fps} fps · ${fmtS(S.frame/sc.fps)}`;
   const o=selObj();const k=o&&o.keys.find(k=>k.f===S.frame);
+  const anim=isAnim();['keyBtn','delKeyBtn','keySep'].forEach(id=>{const el=$('#'+id);if(el)el.hidden=anim;});
   $('#keyBtn').disabled=!o;$('#delKeyBtn').disabled=!k;$('#keyBtn').classList.toggle('on',!!k);
 }
 const frameOnly=(o,i)=>o.outF!=null&&(o.inF||0)===i&&o.outF===i;
@@ -2040,7 +2054,7 @@ mix.addEventListener('wheel',e=>{if(!e.target.closest('canvas[data-lane]')||Math
 
 /* ---------- Auswahl & Keyframe-Aktionen ---------- */
 function select(id,keepTab){if(id!==S.sel)S.pivotEdit=false;S.multi=null;S.sel=id;if(id&&!keepTab&&S.tab!=='inv')S.tab='obj';if(id&&keepTab&&S.tab==='scene')S.tab='obj';renderPanel();requestRender();drawTimeline();updateFrameInfo();}
-function setKey(){const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();const was=objVisible(o,S.frame);extendVisible(o,S.frame);const nk=keyAt(o,S.frame,true);if(!was)toast('„'+o.name+'“ ist jetzt bis Frame '+(S.frame+1)+' sichtbar');afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1)+(nk&&nk.brk?': neue Bewegung':''));}
+function setKey(){if(isAnim())return;const o=selObj();if(!o){toast('Erst ein Objekt auswählen');return;}pushUndo();const was=objVisible(o,S.frame);extendVisible(o,S.frame);const nk=keyAt(o,S.frame,true);if(!was)toast('„'+o.name+'“ ist jetzt bis Frame '+(S.frame+1)+' sichtbar');afterEdit();renderPanel();toast('Keyframe auf Frame '+(S.frame+1)+(nk&&nk.brk?': neue Bewegung':''));}
 function delKey(){const o=selObj();if(!o)return;const k=o.keys.find(k=>k.f===S.frame);if(!k)return;if(o.keys.length===1){pushUndo();o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];afterEdit();renderPanel();toast('Keyframe gelöscht. Das Objekt bleibt so stehen.');return;}
   pushUndo();o.keys=o.keys.filter(x=>x!==k);afterEdit();renderPanel();}
 
@@ -2049,7 +2063,7 @@ const fileIn=$('#fileIn');let fileCb=null;
 fileIn.addEventListener('change',()=>{const f=[...fileIn.files];fileIn.value='';if(f.length&&fileCb)fileCb(f);});
 function pick(accept,cb,multi){fileIn.accept=accept;fileIn.multiple=!!multi;fileCb=cb;fileIn.click();}
 function fit(nw,nh,mw=W*0.55,mh=H*0.55){const s=Math.min(1,mw/nw,mh/nh);return{w:Math.round(nw*s),h:Math.round(nh*s)};}
-function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:S.project?S.frame:0,outF:S.project?(S.copyFwdAdd?null:S.frame):null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
+function newObj(type,name,w,h,extra){const o={id:uid(),type,name,w,h,inF:S.project?S.frame:0,outF:S.project?((S.copyFwdAdd&&!isAnim())?null:S.frame):null,behind:false,flip:false,anim:{...ANIM_NEW},keys:[],base:{...BASE0},layer:S.project?actLayer().id:undefined,q:S.project?nextQ():0,...extra};return o;}
 function addObject(o){pushUndo();scene().objects.push(o);S.tool==='select'||setTool('select');select(o.id);afterEdit();}
 async function insertImageFiles(files){
   for(const f of files){try{const id=await addAsset(f,'image');const e=await assetUrl(id);const im=await loadImageFromUrl(e.url);images.set(id,im);
@@ -2157,11 +2171,11 @@ function panelScene(){
     ${sc.bgVideo?`<p class="hint">Das Video läuft im Hintergrund mit und wiederholt sich bis zum Szenenende.</p>`:''}
     <div class="btns"><button class="btn sm ${S.bgPaint?'on':''}" data-a="bgPaint">${icon('pen')}Hintergrund malen${S.bgPaint?': an':''}</button>${sc.bgStrokes&&sc.bgStrokes.length?`<button class="btn sm danger" data-a="bgPaintClear">Malerei löschen</button>`:''}</div>
     ${S.bgPaint?`<p class="hint"><strong>Hintergrund-Modus an.</strong> Was du jetzt malst, liegt hinter allem und ist auf allen Frames gleich. Tippe nochmal auf den Knopf, um normal weiterzumalen.</p>`:`<p class="hint">Male einen festen Hintergrund, der auf allen Frames gleich bleibt.</p>`}</div>
-  ${panelCam(sc)}
-  <div class="grp"><div class="sub">Einstellungen</div>
+  ${isAnim()?'':panelCam(sc)}
+  ${isAnim()?`<div class="grp"><div class="sub">Frame-für-Frame-Modus</div><p class="hint">Dieses Projekt ist eine einfache Animation ohne Keyframes. Jeder Frame steht für sich: Was du malst oder änderst, gilt nur für diesen Frame. Zum Weiterzeichnen den Frame kopieren (Frame-Knopf) und anpassen.</p></div>`:`<div class="grp"><div class="sub">Einstellungen</div>
     <label class="check"><input type="checkbox" data-set="copyFwdAdd" ${S.copyFwdAdd?'checked':''}>Neues Objekt gilt ab hier für alle folgenden Frames</label>
     <label class="check"><input type="checkbox" data-set="copyFwdDel" ${S.copyFwdDel?'checked':''}>Löschen entfernt das Objekt nur ab diesem Frame (davor bleibt es)</label>
-    <p class="hint">Sind beide aus, gilt ein neues Objekt nur auf dem einen Frame, und Löschen entfernt es überall.</p></div>`;
+    <p class="hint">Sind beide aus, gilt ein neues Objekt nur auf dem einen Frame, und Löschen entfernt es überall.</p></div>`}`;
 }
 function panelCam(sc){
   const st=camState(sc,S.frame),ks=sc.cam&&sc.cam.keys||[],k=ks.find(k=>k.f===S.frame),kb=[...ks].reverse().find(k=>k.f<=S.frame);
@@ -2189,7 +2203,7 @@ function panelObj(){
   const groupBox=o.type==='group'?`<div class="grp"><div class="sub">Gruppe</div><p class="hint">${descendants(sc,o).filter(x=>x.type!=='group').length} Objekte, die sich wie eins bewegen: ${sc.objects.filter(c=>c.parent===o.id).map(c=>esc(c.name)).join(', ')}.</p><div class="btns"><button class="btn sm" data-a="ungroup">Gruppe auflösen</button></div></div>`:'';
   const ease=Object.entries(EASE_NAMES).map(([v,n])=>`<option value="${v}" ${kb&&kb.e===v?'selected':''}>${n}</option>`).join('');
   return groupBox+`<div class="grp"><div class="row"><input id="ob-name" class="field" style="flex:1" value="${esc(o.name)}" data-ob="name" aria-label="Objektname"><button class="btn danger" data-a="objDel" title="Objekt löschen" aria-label="Objekt löschen">${icon('trash')}Löschen</button></div>
-    <div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: kein Keyframe`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
+    ${isAnim()?`<p class="hint"><strong>Frame für Frame.</strong> Alles, was du an diesem Objekt änderst – verschieben, Größe, Drehung, Farbe – gilt nur für diesen Frame. Keine Keyframes, kein automatisches Dazwischen.</p>${objVisible(o,S.frame)?'':`<p class="hint"><strong>Auf diesem Frame nicht sichtbar.</strong> Unten unter „Sichtbar“ einstellen.</p>`}${morphables(o).length?`<div class="sub">Form verbiegen</div><div class="chips"><button class="chip ${morphables(o).every(x=>x.morph)?'on':''}" data-a="animTog" data-v="form">Form ${morphables(o).every(x=>x.morph)?'an':'aus'}</button></div>${isWarp(o)&&o.pts?`<div class="btns"><button class="btn sm" data-a="warpReset">Form zurücksetzen</button></div>`:''}`:''}`:`<div class="key-state">${icon('key')}<span>${k?`Keyframe auf Frame ${S.frame+1}`:`Frame ${S.frame+1}: kein Keyframe`} · ${o.keys.length} Keyframe${o.keys.length===1?'':'s'}</span></div>
     ${objVisible(o,S.frame)?'':`<p class="hint"><strong>Auf diesem Frame nicht sichtbar.</strong> „Keyframe setzen“ macht es bis hierher sichtbar, oder unten unter „Sichtbar“ einstellen.</p>`}
     <p class="hint">${k?'Verschieben ändert diesen Keyframe.':S.autoKey?'Verschieben setzt hier automatisch einen Keyframe.':!o.keys.length?'Noch keine Keyframes: Verschieben stellt das Objekt einfach hin. Für eine Bewegung: „Keyframe setzen“, dann anderen Frame wählen, wieder „Keyframe setzen“ und verschieben.':'Verschieben bewegt das ganze Objekt in allen Frames. Für eine neue Position in der Animation zuerst „Keyframe setzen“ tippen.'}</p>
     <div class="btns"><button class="btn sm" data-a="keyPrev">◀</button><button class="btn sm ${k?'on':''}" data-a="setKey">${icon('key')}Keyframe setzen</button><button class="btn sm" data-a="delKey" ${k?'':'disabled'}>Löschen</button><button class="btn sm" data-a="keyNext">▶</button></div>
@@ -2200,7 +2214,7 @@ function panelObj(){
     ${isWarp(o)&&o.morph?`<p class="hint"><strong>Form ist an:</strong> Ziehe die 9 weißen Punkte auf der Bühne, um das Objekt zu verbiegen, zu stauchen oder zu strecken. Auf einem anderen Frame neu ziehen: Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt es sich fließend.</p>`:''}
     ${isWarp(o)&&o.pts?`<div class="btns"><button class="btn sm" data-a="warpReset">Form zurücksetzen</button></div>`:''}
     <label class="check"><input id="ob-ak" type="checkbox" data-ob="autoKey" ${S.autoKey?'checked':''}>Auto-Keyframe: beim Verschieben automatisch Keyframes setzen</label>
-    <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div></div>
+    <div class="row"><label for="ob-ease">Bewegung</label><select id="ob-ease" class="field" data-ob="ease">${ease}</select></div>`}</div>
   ${o.type==='mouth'?panelMouth(o):''}
   <div class="grp"><div class="sub">Position auf Frame ${S.frame+1}</div>
     ${o.path?'':slider('x','X',-600,W+600,st.x,'')+slider('y','Y',-600,H+600,st.y,'')}${slider('s','Größe',2,400,st.s*100,'%')}${slider('r','Drehung',-360,360,st.r,'°')}${slider('o','Deckkraft',0,100,st.o*100,'%')}</div>
@@ -2218,7 +2232,7 @@ function panelObj(){
     <p class="hint">Ziehe die weißen Punkte, um die Form zu verändern. Fährst du mit Maus, Stift oder Finger an den Rand, erscheint dort ein +: Tippen macht genau da einen neuen Punkt. Zweimal schnell auf einen Punkt tippen entfernt ihn.</p>
     ${o.morph?'<p class="hint">„Form“ ist eingeschaltet: Geh auf einen anderen Frame und zieh die Punkte. Dort entsteht ein Keyframe mit der neuen Form, dazwischen verwandelt sie sich fließend.</p>':''}</div>`:''}
   ${panelJoint(o,sc)}
-  ${panelPath(o,sc)}
+  ${isAnim()?'':panelPath(o,sc)}
   <div class="grp"><div class="sub">Sichtbar</div>
     <div class="row"><label for="ob-in">ab Frame</label><input id="ob-in" class="field num" type="number" min="1" max="${sc.length}" value="${(o.inF||0)+1}" data-ob="inF"><label for="ob-out" style="min-width:0">bis</label><input id="ob-out" class="field num" type="number" min="1" max="${sc.length}" placeholder="Ende" value="${o.outF==null?'':o.outF+1}" data-ob="outF"></div>
     <div class="btns"><button class="btn sm" data-a="visFrom">Ab hier</button><button class="btn sm" data-a="visTo">Bis hier</button><button class="btn sm" data-a="visAll">Immer</button></div></div>
@@ -2628,16 +2642,24 @@ home.addEventListener('click',async e=>{
     setTimeout(()=>location.reload(),600);}
 });
 function newProjectDlg(){
+  const modeCard=(m,title,desc,soon)=>`<button class="mode-card ${m==='animplus'?'on':''} ${soon?'soon':''}" data-mode="${m}"><div class="mc-t">${title}${soon?' <span class="mc-badge">bald</span>':''}</div><div class="mc-d">${desc}</div></button>`;
   const d=openModal(`<h2>Neues Projekt</h2>
     <div class="grp"><label class="sub" for="np-name">Name</label><input id="np-name" class="field" placeholder="z. B. Mein erster Trickfilm"></div>
+    <div class="grp"><div class="sub">Was möchtest du machen?</div>
+      <div class="mode-cards">
+      ${modeCard('anim','Animation','Einfach, Frame für Frame. Keine Keyframes – jeder Frame steht für sich.')}
+      ${modeCard('animplus','Animation+','Mit Keyframes: Objekte bewegen sich automatisch flüssig von einer Stelle zur nächsten.')}
+      ${modeCard('video','Video','Videoschnitt: Szenen und Videos hintereinander mit Übergängen.',true)}
+      </div></div>
     <div class="grp"><div class="sub">Frames pro Sekunde für die erste Szene</div><div class="chips">${[6,8,12,15,24].map(f=>`<button class="chip ${f===12?'on':''}" data-np="${f}">${f}</button>`).join('')}</div>
     <p class="hint">12 fps ist typisch für Zeichentrick. Jede Szene kann später andere fps bekommen.</p></div>
     <div class="foot"><button class="btn" id="np-no">Abbrechen</button><button class="btn primary" id="np-go">${icon('plus')}Erstellen</button></div>`);
-  let fps=12;
+  let fps=12,mode='animplus';
   d.querySelectorAll('[data-np]').forEach(b=>b.onclick=()=>{fps=+b.dataset.np;d.querySelectorAll('[data-np]').forEach(x=>x.classList.toggle('on',x===b));});
+  d.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{if(b.dataset.mode==='video'){toast('Der Video-Modus kommt im nächsten Update.');return;}mode=b.dataset.mode;d.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('on',x===b));});
   d.querySelector('#np-no').onclick=closeModal;
   const go=async()=>{const n=d.querySelector('#np-name').value.trim()||'Neues Projekt';
-    const p={id:uid(),name:n,created:Date.now(),updated:Date.now(),scenes:[newScene('Szene 1',fps,fps*2)]};
+    const p={id:uid(),name:n,mode,created:Date.now(),updated:Date.now(),scenes:[newScene('Szene 1',fps,fps*2)]};
     await DB.put('projects',p);closeModal();home.hidden=true;await openProject(p);};
   d.querySelector('#np-go').onclick=go;
   d.querySelector('#np-name').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
@@ -2829,7 +2851,7 @@ function sampleProject(){
 /* ---------- Projekt öffnen ---------- */
 async function openProject(p){
   stopRecording();if(S.playing)stopPlayback();pool.clear();pool=new MediaPool();fcache.clear();thumbs.clear();peaks.clear();
-  S.project=p;S.si=0;S.sel=null;S.multi=null;S.layerId=null;p.scenes.forEach(layersOf);
+  S.project=p;if(!p.mode)p.mode='animplus';S.bgPaint=false;S.si=0;S.sel=null;S.multi=null;S.layerId=null;p.scenes.forEach(layersOf);
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(!o.layer||!layersOf(sc).some(l=>l.id===o.layer))o.layer=objLayer(sc,o).id;});});
   if(p.seq==null){p.seq=0;p.scenes.forEach(sc=>sc.objects.forEach((o,i)=>{o.q=o.behind?-1000+i:++p.seq;}));}
   p.scenes.forEach(sc=>{sc.objects.forEach(o=>{if(o.keys&&o.keys.length===1){const k=o.keys[0];o.base={...fullKey(k)};if(k.pts)o.pts=k.pts;o.keys=[];}});
@@ -2839,7 +2861,7 @@ async function openProject(p){
   await Promise.all([...ids].map(id=>assetUrl(id).catch(()=>null)));
   try{await DB.put('meta',{id:'last',value:p.id});}catch(e){}
   stopSceneAudio();abuf.clear();if(p.scenes.some(sc=>sc.audio.length))preloadAudio(p.scenes);
-  refreshScenes();setFrame(0);renderPanel();
+  refreshScenes();setFrame(0);renderPanel();updateModeUI();
 }
 
 /* ---------- Tastatur ---------- */
